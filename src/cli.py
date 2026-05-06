@@ -1,4 +1,4 @@
-"""CLI entry point: download | features | train | eval."""
+"""CLI entry point: download | features | train | eval | compare."""
 
 from __future__ import annotations
 
@@ -117,6 +117,22 @@ def _cmd_eval(_args: argparse.Namespace) -> None:
     logger.info("ROC curve → %s", _ROC_PATH)
 
 
+def _cmd_compare(_args: argparse.Namespace) -> None:
+    from src.compare import run_comparison
+
+    if not (_RESULTS / "X_test.npy").exists():
+        raise FileNotFoundError("Run 'make train' first to generate results/X_test.npy")
+
+    results = run_comparison(
+        X_test_path=_RESULTS / "X_test.npy",
+        y_test_path=_RESULTS / "y_test.npy",
+        out_dir=_RESULTS,
+    )
+    logger.info("\n%s", results.to_string(index=False))
+    logger.info("Comparison saved → %s", _RESULTS / "comparison.parquet")
+    logger.info("Figure → %s", _RESULTS / "figures" / "model_comparison.png")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         prog="python -m src.cli",
@@ -127,6 +143,7 @@ def main() -> None:
     sub.add_parser("features", help="Extract features → data/features/features.parquet")
     sub.add_parser("train", help="Fit IsolationForest on healthy windows")
     sub.add_parser("eval", help="Evaluate with bootstrap CI and save results")
+    sub.add_parser("compare", help="Run all 4 models and save comparison table + figure")
 
     args = parser.parse_args()
     dispatch = {
@@ -134,6 +151,7 @@ def main() -> None:
         "features": _cmd_features,
         "train": _cmd_train,
         "eval": _cmd_eval,
+        "compare": _cmd_compare,
     }
     dispatch[args.command](args)
 
