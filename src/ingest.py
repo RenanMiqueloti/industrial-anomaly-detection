@@ -1,14 +1,26 @@
-"""Raw data ingestion for CWRU bearing dataset.
+"""Raw data ingestion for MFPT bearing dataset.
 
-Loads .mat files, discovers the drive-end (or front-end) time-series key,
-infers the fault class from the filename/subfolder, and yields fixed-length
-windows for downstream feature extraction.
+Loads the 23 .mat files from the Machinery Failure Prevention Technology Society
+(MFPT) bearing fault dataset. Each file contains a MATLAB struct ``bearing`` with
+fields ``gs`` (accelerometer signal, g-units), ``sr`` (sampling rate, Hz),
+``load`` (load weight, lbs), and ``rate`` (shaft speed).
+
+Reference
+---------
+Bechhoefer, E. (2013). *Condition Based Maintenance Fault Database for Testing
+Diagnostics and Prognostic Algorithms*. Machinery Failure Prevention Technology
+Society. https://www.mfpt.org/fault-data-sets/
+
+Dataset layout (23 files total)
+---------------------------------
+baseline_1-3.mat      : healthy bearing, 97 656 Hz, 270 lbs constant load
+outer_race_1-10.mat   : outer-race fault, 97 656 Hz (1-3) / 48 828 Hz (4-10)
+inner_race_1-7.mat    : inner-race fault, 48 828 Hz, variable load 0-300 lbs
 """
 
 from __future__ import annotations
 
 import logging
-import re
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -18,65 +30,36 @@ import scipy.io
 
 logger = logging.getLogger(__name__)
 
-_KEY_PATTERNS = [
-    re.compile(r"^X\d+_DE_time$"),
-    re.compile(r"^X\d+_FE_time$"),
-]
 
-# CWRU numeric file-ID → fault class mapping
-_FILE_CLASS_RANGES: list[tuple[range, str]] = [
-    (range(97, 101), "normal"),
-    (range(105, 119), "IR"),
-    (range(119, 133), "B"),
-    (range(133, 201), "OR"),
-]
+def _infer_mfpt_class(stem: str) -> str:
+    """Infer fault class from the MFPT filename stem (case-insensitive).
 
-
-def _infer_class(stem: str) -> str:
-    """Infer fault class from filename stem (case-insensitive prefix + numeric ID).
-
-    Recognized formats:
-      - "Normal_0", "97.mat" (numeric 97-100)  → "normal"
-      - "IR007_0", file IDs 105-118            → "IR"   (inner race)
-      - "OR007@3_0", file IDs 133-200          → "OR"   (outer race)
-      - "B007_0", "Ball_007", file IDs 119-132 → "B"    (ball)
+    ``baseline_*`` → ``"normal"``
+    ``outer_race_*`` → ``"OR"``
+    ``inner_race_*`` → ``"IR"``
+    anything else   → ``"unknown"``
     """
     lower = stem.lower()
-    if "normal" in lower:
+    if lower.startswith("baseline"):
         return "normal"
-    # Anchored prefixes catch the most common CWRU mirror filenames
-    # (e.g. IR007_0.mat, OR007@3_0.mat, B007_0.mat) without substring
-    # collisions. The previous "ir"/"or"/word-boundary "b" approach silently
-    # mis-classified "B007_0" → "unknown" because the regex \bb\b requires a
-    # word boundary that "b007" does not have.
-    if re.match(r"^or\d", lower) or "outer" in lower:
+    if lower.startswith("outer"):
         return "OR"
-    if re.match(r"^ir\d", lower) or "inner" in lower:
+    if lower.startswith("inner"):
         return "IR"
-    if re.match(r"^b\d", lower) or "ball" in lower:
-        return "B"
-
-    # Numeric ID fallback for the official CWRU file IDs (e.g. "97.mat").
-    m = re.search(r"^(\d+)", stem)
-    if m:
-        file_id = int(m.group(1))
-        for id_range, cls in _FILE_CLASS_RANGES:
-            if file_id in id_range:
-                return cls
-
     return "unknown"
 
 
-def load_cwru(root: Path) -> pd.DataFrame:
-    """Load all .mat bearing files from *root* (recursive).
+def load_mfpt(root: Path) -> pd.DataFrame:
+    """Load all MFPT bearing .mat files from *root* (recursive).
 
-    For each file, discovers the drive-end or front-end time-series key
-    (pattern ``X<N>_DE_time`` with ``X<N>_FE_time`` as fallback), infers
-    the fault class, and stores the raw 1-D signal.
+    Reads the ``bearing`` MATLAB struct from each ``.mat`` file and extracts:
+    - ``gs``:   1-D accelerometer signal (float64, g-units)
+    - ``sr``:   sampling rate in Hz (97 656 for baseline; 48 828 for fault files)
 
     Returns
     -------
-    pd.DataFrame with columns: ``filename``, ``signal`` (np.ndarray), ``class``.
+    pd.DataFrame with columns: ``filename``, ``signal`` (np.ndarray),
+    ``class`` (str), ``sr`` (float).
 
     Raises
     ------
@@ -88,32 +71,22 @@ def load_cwru(root: Path) -> pd.DataFrame:
 
     rows = []
     for path in mat_files:
-        mat = scipy.io.loadmat(str(path))
-        signal_key: str | None = None
-        for pattern in _KEY_PATTERNS:
-            for k in mat:
-                if pattern.match(k):
-                    signal_key = k
-                    break
-            if signal_key:
-                break
-
-        if signal_key is None:
-            logger.warning(
-                "No matching key in %s — keys: %s",
-                path.name,
-                [k for k in mat if not k.startswith("_")],
-            )
+        try:
+            mat = scipy.io.loadmat(str(path))
+            bearing = mat["bearing"][0, 0]
+            signal = np.array(bearing["gs"]).squeeze().astype(np.float64)
+            sr = float(np.array(bearing["sr"]).squeeze())
+        except (KeyError, IndexError, ValueError) as exc:
+            logger.warning("Skipping %s: %s", path.name, exc)
             continue
 
-        signal = mat[signal_key].squeeze().astype(np.float64)
-        cls = _infer_class(path.stem)
+        cls = _infer_mfpt_class(path.stem)
         if cls == "unknown":
             logger.warning("Could not infer class for %s", path.name)
 
-        rows.append({"filename": path.name, "signal": signal, "class": cls})
+        rows.append({"filename": path.name, "signal": signal, "class": cls, "sr": sr})
 
-    return pd.DataFrame(rows, columns=["filename", "signal", "class"])
+    return pd.DataFrame(rows, columns=["filename", "signal", "class", "sr"])
 
 
 def window(
