@@ -6,7 +6,7 @@
 
 **Unsupervised anomaly detection on industrial vibration time-series.** Compares Isolation Forest, One-Class SVM, Local Outlier Factor and a small AutoEncoder on the [CWRU bearing dataset](https://engineering.case.edu/bearingdatacenter), with handcrafted features (RMS, FFT band energy, kurtosis), SHAP explanations, and bootstrap confidence intervals on the metrics.
 
-> **Status:** scaffold (Sprint 0). Feature extraction module is in place and tested against signal-processing identities. See [PLANO.md](PLANO.md) for the next sprints.
+> **Status:** Sprint 1 done — IsolationForest baseline with bootstrap CI. Feature extraction module is in place and tested against signal-processing identities. See [PLANO.md](PLANO.md) for the next sprints.
 
 ---
 
@@ -79,7 +79,37 @@ make install           # pip install -e ".[dev]"
 make test              # pytest -v --cov=src tests/
 ```
 
-The remaining `make` targets (`data`, `features`, `train`, `eval`, `explain`, `dashboard`) are stubbed and land in upcoming sprints — see [PLANO.md](PLANO.md).
+Sprint 1 targets are now functional:
+
+```bash
+make data        # clone CWRU mirror → data/raw/
+make features    # extract features → data/features/features.parquet
+make train       # fit IsolationForest on healthy windows → results/iforest_model.joblib
+make eval        # bootstrap CI → results/iforest_metrics.json + results/figures/iforest_roc.png
+```
+
+The `explain` and `dashboard` targets land in upcoming sprints — see [PLANO.md](PLANO.md).
+
+---
+
+## Reproducing the baseline
+
+```bash
+make install
+make data
+make features
+make train
+make eval
+```
+
+### Baseline metrics (IsolationForest, CWRU subset)
+
+| Metric | Mean | 95% CI low | 95% CI high |
+|--------|------|------------|-------------|
+| ROC-AUC | _[fill after `make eval`]_ | — | — |
+| F1 | _[fill after `make eval`]_ | — | — |
+
+> _[a preencher após download manual da CWRU em `data/raw/` se `make data` falhar]_
 
 ---
 
@@ -89,14 +119,28 @@ The remaining `make` targets (`data`, `features`, `train`, `eval`, `explain`, `d
 industrial-anomaly-detection/
 ├── src/
 │   ├── __init__.py
-│   └── features.py           # implemented + tested
+│   ├── features.py           # time-domain + FFT band energy
+│   ├── ingest.py             # load_cwru + window generator
+│   ├── dataset.py            # build_feature_matrix → parquet
+│   ├── evaluate.py           # bootstrap_ci + plot_roc
+│   ├── cli.py                # download | features | train | eval
+│   └── models/
+│       ├── __init__.py
+│       └── iforest.py        # IForestDetector (fit/score/save/load)
 ├── tests/
-│   └── test_features.py      # 8 physical-truth assertions
+│   ├── test_features.py      # 8 physical-truth assertions (Sprint 0)
+│   ├── test_ingest.py        # windowing + synthetic .mat loading
+│   ├── test_dataset.py       # feature matrix construction
+│   ├── test_iforest.py       # fit/score/save/load
+│   ├── test_evaluate.py      # bootstrap CI + ROC plot
+│   └── test_pipeline.py      # end-to-end synthetic pipeline
 ├── data/
 │   ├── raw/                  # CWRU .mat files (gitignored)
 │   └── features/             # parquet feature matrix (gitignored)
 ├── results/
-│   └── figures/              # plots, gitignored
+│   ├── figures/              # ROC plots (gitignored)
+│   ├── iforest_model.joblib  # trained model (gitignored)
+│   └── iforest_metrics.json  # bootstrap CI results (gitignored)
 ├── .github/workflows/ci.yml
 ├── pyproject.toml
 ├── Makefile
