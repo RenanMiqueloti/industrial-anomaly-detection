@@ -6,7 +6,7 @@
 
 **Unsupervised anomaly detection on industrial vibration time-series.** Compares Isolation Forest, One-Class SVM, Local Outlier Factor and a small AutoEncoder on the [CWRU bearing dataset](https://engineering.case.edu/bearingdatacenter), with handcrafted features (RMS, FFT band energy, kurtosis), SHAP explanations, and bootstrap confidence intervals on the metrics.
 
-> **Status:** Sprint 3 done — SHAP explanations + per-fault attribution (TreeExplainer for IForest, KernelExplainer for OC-SVM / LOF / AutoEncoder). See [PLANO.md](PLANO.md) for upcoming sprints.
+> **Status:** Sprint 4 done — Streamlit dashboard + Docker. Full pipeline from raw CWRU `.mat` files to interactive anomaly explorer in a container. See [PLANO.md](PLANO.md) for upcoming sprints.
 
 ---
 
@@ -88,9 +88,8 @@ make train       # fit IsolationForest on healthy windows → results/iforest_mo
 make eval        # bootstrap CI → results/iforest_metrics.json + results/figures/iforest_roc.png
 make compare     # train all 4 models → results/comparison.parquet + results/figures/model_comparison.png
 make explain     # SHAP explanations → results/figures/shap_summary.png + shap_per_fault_*.png
+make dashboard   # launch Streamlit dashboard at http://localhost:8501
 ```
-
-The `dashboard` target lands in a future sprint — see [PLANO.md](PLANO.md).
 
 ---
 
@@ -101,6 +100,46 @@ The `dashboard` target lands in a future sprint — see [PLANO.md](PLANO.md).
 **OC-SVM, LOF, AutoEncoder** use `shap.KernelExplainer` — model-agnostic sampling-based SHAP. A background of 50 healthy windows is used as the reference distribution; 100 test windows are explained per run.
 
 > Top-3 features by mean |SHAP value| on CWRU test set: _[a preencher após `make explain`]_
+
+---
+
+## Dashboard
+
+Interactive anomaly explorer built with Streamlit. Shows feature vectors, score distribution, and per-window SHAP waterfall for any model in the comparison.
+
+**Local (Python):**
+```bash
+make data features train compare   # one-time pipeline
+make dashboard                     # opens http://localhost:8501
+```
+
+**Containerized:**
+```bash
+docker compose up --build          # builds image and starts dashboard
+# open http://localhost:8501
+docker compose down                # teardown
+```
+
+If the data artifacts (`results/X_test.npy`, `data/features/`) are absent, the dashboard shows setup instructions rather than crashing.
+
+---
+
+## Production deployment
+
+```bash
+# Build and start
+docker compose up -d --build
+
+# Service URLs
+# dashboard   http://localhost:8501
+
+# Teardown
+docker compose down -v
+```
+
+| Service | URL |
+|---------|-----|
+| Dashboard | http://localhost:8501 |
 
 ---
 
