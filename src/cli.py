@@ -1,4 +1,4 @@
-"""CLI entry point: download | features | train | eval | compare."""
+"""CLI entry point: download | features | train | eval | compare | explain | api | drift."""
 
 from __future__ import annotations
 
@@ -17,56 +17,98 @@ _MODEL_PATH = _RESULTS / "iforest_model.joblib"
 _METRICS_PATH = _RESULTS / "iforest_metrics.json"
 _ROC_PATH = _RESULTS / "figures" / "iforest_roc.png"
 
+# IMS default run directory (Run 2 — Bearing 1 outer-race failure)
+_IMS_RUN_DIR = _DATA_RAW / "2nd_test"
+
+
+def _find_ims_run_dir() -> Path:
+    """Locate the IMS run directory, trying common download layouts."""
+    candidates = [
+        _IMS_RUN_DIR,
+        _DATA_RAW / "IMS" / "2nd_test",
+        _DATA_RAW / "bearing-dataset" / "2nd_test",
+    ]
+    for c in candidates:
+        if c.exists() and any(c.iterdir()):
+            return c
+    raise FileNotFoundError(
+        "IMS Run 2 directory not found. Expected one of:\n"
+        + "\n".join(f"  {c}" for c in candidates)
+        + "\n\nRun 'make download' or see README for manual download instructions."
+    )
+
 
 def _cmd_download(_args: argparse.Namespace) -> None:
-    import urllib.request
-    import zipfile
+    """Download the IMS/NASA bearing dataset via Kaggle CLI.
 
-    from tqdm import tqdm
+    Requires:
+        pip install kaggle
+        Configure ~/.kaggle/kaggle.json with your API key.
+        See: https://www.kaggle.com/docs/api
+
+    Dataset: vinayak123tyagi/bearing-dataset (IMS University of Cincinnati)
+    """
+    import subprocess
+    import sys
 
     _DATA_RAW.mkdir(parents=True, exist_ok=True)
-    # Original mfpt.org URL is dead (domain redirected to asnt.org).
-    # Figshare is the canonical stable mirror for the dataset.
-    url = "https://ndownloader.figshare.com/files/53038079"
-    zip_path = _DATA_RAW / "mfpt.zip"
 
-    logger.info("Downloading MFPT dataset from %s …", url)
+    logger.info("Downloading IMS/NASA bearing dataset from Kaggle …")
+    logger.info("Dataset: vinayak123tyagi/bearing-dataset")
 
-    class _Progress(tqdm):  # type: ignore[type-arg]
-        def update_to(self, b: int = 1, bsize: int = 1, tsize: int | None = None) -> None:
-            if tsize is not None:
-                self.total = tsize
-            self.update(b * bsize - self.n)
+    try:
+        subprocess.run(
+            [
+                "kaggle",
+                "datasets",
+                "download",
+                "-d",
+                "vinayak123tyagi/bearing-dataset",
+                "-p",
+                str(_DATA_RAW),
+                "--unzip",
+            ],
+            check=True,
+        )
+    except FileNotFoundError:
+        logger.error(
+            "Kaggle CLI not found.\n"
+            "Install with: pip install kaggle\n"
+            "Then add ~/.kaggle/kaggle.json with your API key.\n"
+            "Alternative: download manually from:\n"
+            "  https://www.kaggle.com/datasets/vinayak123tyagi/bearing-dataset\n"
+            "  and extract to data/raw/ so that data/raw/2nd_test/ exists."
+        )
+        sys.exit(1)
+    except subprocess.CalledProcessError as exc:
+        logger.error("Kaggle download failed (exit %d). Check credentials.", exc.returncode)
+        sys.exit(1)
 
-    with _Progress(unit="B", unit_scale=True, unit_divisor=1024, miniters=1, desc="MFPT") as t:
-        urllib.request.urlretrieve(url, zip_path, reporthook=t.update_to)
-
-    logger.info("Extracting to %s …", _DATA_RAW)
-    with zipfile.ZipFile(zip_path, "r") as zf:
-        zf.extractall(_DATA_RAW)
-    zip_path.unlink()
-
-    mat_count = len(list(_DATA_RAW.rglob("*.mat")))
-    logger.info("Done — %d .mat files extracted to %s", mat_count, _DATA_RAW)
+    run2 = _find_ims_run_dir()
+    n_files = sum(1 for _ in run2.iterdir() if _.is_file())
+    logger.info("Done — %d snapshot files in %s", n_files, run2)
 
 
 def _cmd_features(_args: argparse.Namespace) -> None:
-    from src.dataset import build_feature_matrix
+    from src.dataset import build_ims_features
 
-    logger.info("Extracting features from %s …", _DATA_RAW)
-    X, y, meta = build_feature_matrix(_DATA_RAW, _DATA_FEATURES)
+    run_dir = _find_ims_run_dir()
+    logger.info("Extracting features from IMS Run 2 (%s) …", run_dir)
+    X, y, meta = build_ims_features(run_dir, _DATA_FEATURES)
+    n_bearings = meta["bearing_id"].nunique() if "bearing_id" in meta.columns else "?"
     logger.info(
-        "Feature matrix: X=%s  y=%s  classes=%s",
+        "Feature matrix: X=%s  y=%s  bearings=%s  healthy=%d  degraded=%d",
         X.shape,
         y.shape,
-        meta["class"].value_counts().to_dict(),
+        n_bearings,
+        int((y == 0).sum()),
+        int((y == 1).sum()),
     )
 
 
 def _cmd_train(_args: argparse.Namespace) -> None:
     import numpy as np
     import pandas as pd
-    from sklearn.model_selection import train_test_split
 
     from src.models.iforest import IForestDetector
 
@@ -78,15 +120,27 @@ def _cmd_train(_args: argparse.Namespace) -> None:
     X = df[feature_cols].values.astype(np.float64)
     y = df["_meta_y"].values
 
-    # Split on integer indices so we can carry meta columns alongside X/y.
-    indices = np.arange(len(df))
-    idx_train, idx_test = train_test_split(indices, test_size=0.30, stratify=y, random_state=42)
+    # For IMS: temporal split (preserve time ordering — no random shuffle).
+    # For other datasets without timestamps: stratified random split.
+    if "_meta_timestamp" in df.columns:
+        n = len(df)
+        split = int(n * 0.70)
+        idx_train = np.arange(split)
+        idx_test = np.arange(split, n)
+        logger.info("Temporal split: %d train snapshots, %d test snapshots", split, n - split)
+    else:
+        from sklearn.model_selection import train_test_split
+
+        indices = np.arange(len(df))
+        idx_train, idx_test = train_test_split(
+            indices, test_size=0.30, stratify=y, random_state=42
+        )
+
     X_train, X_test = X[idx_train], X[idx_test]
     y_train, y_test = y[idx_train], y[idx_test]
-
     X_healthy = X_train[y_train == 0]
 
-    logger.info("Fitting IForest on %d healthy windows …", len(X_healthy))
+    logger.info("Fitting IForest on %d healthy snapshots …", len(X_healthy))
     model = IForestDetector()
     model.fit(X_healthy)
     model.save(_MODEL_PATH)
@@ -97,7 +151,6 @@ def _cmd_train(_args: argparse.Namespace) -> None:
     np.save(_RESULTS / "y_test.npy", y_test)
     logger.info("Test split saved → %s", _RESULTS)
 
-    # Persist class metadata for the test split (needed by explain CLI for per-fault SHAP).
     meta_cols = [c for c in df.columns if c.startswith("_meta_")]
     meta_test = df.iloc[idx_test][meta_cols].reset_index(drop=True)
     meta_test.to_parquet(_RESULTS / "meta_test.parquet", index=False)
@@ -132,6 +185,13 @@ def _cmd_eval(_args: argparse.Namespace) -> None:
     )
     logger.info("Metrics → %s", _METRICS_PATH)
 
+    # Calibrated threshold: p99 of healthy-window scores (FP rate <= 1 % by construction).
+    normal_mask = y_test == 0
+    thr = float(np.percentile(scores[normal_mask], 99)) if normal_mask.any() else float(np.median(scores))
+    threshold_path = _RESULTS / "threshold.json"
+    threshold_path.write_text(json.dumps({"iforest": thr}, indent=2))
+    logger.info("Threshold (p99 healthy) → %s  (%.4f)", threshold_path, thr)
+
     plot_roc(y_test, scores, _ROC_PATH)
     logger.info("ROC curve → %s", _ROC_PATH)
 
@@ -157,7 +217,6 @@ def _cmd_explain(_args: argparse.Namespace) -> None:
     df = pd.read_parquet(_DATA_FEATURES)
     feature_names = [c for c in df.columns if not c.startswith("_meta_")]
 
-    # Subsample deterministically so meta rows align with the explained rows.
     if len(X_test) > DEFAULT_EVAL_SIZE:
         rng = np.random.default_rng(42)
         eval_idx = rng.choice(len(X_test), DEFAULT_EVAL_SIZE, replace=False)
@@ -166,40 +225,53 @@ def _cmd_explain(_args: argparse.Namespace) -> None:
         eval_idx = np.arange(len(X_test))
         X_eval = X_test
 
-    logger.info("Running TreeExplainer on %d windows …", len(X_eval))
+    logger.info("Running TreeExplainer on %d snapshots …", len(X_eval))
     exp = explain(model, X_eval, feature_names, eval_size=None)
 
     summary_path = _RESULTS / "figures" / "shap_summary.png"
     save_summary_plot(exp, summary_path)
     logger.info("SHAP summary plot → %s", summary_path)
 
-    # Per-fault plots require meta_test.parquet (saved by _cmd_train).
     meta_path = _RESULTS / "meta_test.parquet"
     if not meta_path.exists():
-        logger.warning(
-            "meta_test.parquet not found — re-run 'make train' to enable per-fault SHAP plots."
-        )
+        logger.warning("meta_test.parquet not found — re-run 'make train' to enable per-segment SHAP.")
         return
 
     meta_test = pd.read_parquet(meta_path).reset_index(drop=True)
     meta_eval = meta_test.iloc[eval_idx].reset_index(drop=True)
 
-    for cls in sorted(meta_eval["_meta_class"].unique()):
-        if cls == "normal":
-            continue
-        mask = (meta_eval["_meta_class"] == cls).values
-        if mask.sum() < 5:
-            logger.warning("Skipping per-fault SHAP for '%s' — only %d windows.", cls, mask.sum())
-            continue
-        exp_cls = _shap.Explanation(
-            values=exp.values[mask],
-            base_values=exp.base_values[mask] if exp.base_values is not None else None,
-            data=exp.data[mask],
-            feature_names=feature_names,
-        )
-        fault_path = _RESULTS / "figures" / f"shap_per_fault_{cls}.png"
-        save_summary_plot(exp_cls, fault_path)
-        logger.info("Per-fault SHAP (%s) → %s", cls, fault_path)
+    # Per-bearing SHAP (IMS has bearing_id, not fault class)
+    if "_meta_bearing_id" in meta_eval.columns:
+        for bid in sorted(meta_eval["_meta_bearing_id"].unique()):
+            mask = (meta_eval["_meta_bearing_id"] == bid).values
+            if mask.sum() < 5:
+                logger.warning("Skipping per-bearing SHAP for bearing %d — only %d rows.", bid, mask.sum())
+                continue
+            exp_bid = _shap.Explanation(
+                values=exp.values[mask],
+                base_values=exp.base_values[mask] if exp.base_values is not None else None,
+                data=exp.data[mask],
+                feature_names=feature_names,
+            )
+            fault_path = _RESULTS / "figures" / f"shap_bearing_{bid}.png"
+            save_summary_plot(exp_bid, fault_path)
+            logger.info("Per-bearing SHAP (bearing %d) → %s", bid, fault_path)
+    elif "_meta_class" in meta_eval.columns:
+        for cls in sorted(meta_eval["_meta_class"].unique()):
+            if cls == "normal":
+                continue
+            mask = (meta_eval["_meta_class"] == cls).values
+            if mask.sum() < 5:
+                continue
+            exp_cls = _shap.Explanation(
+                values=exp.values[mask],
+                base_values=exp.base_values[mask] if exp.base_values is not None else None,
+                data=exp.data[mask],
+                feature_names=feature_names,
+            )
+            fault_path = _RESULTS / "figures" / f"shap_per_fault_{cls}.png"
+            save_summary_plot(exp_cls, fault_path)
+            logger.info("Per-fault SHAP (%s) → %s", cls, fault_path)
 
 
 def _cmd_api(_args: argparse.Namespace) -> None:
@@ -227,7 +299,7 @@ def _cmd_drift(_args: argparse.Namespace) -> None:
     df = pd.read_parquet(_DATA_FEATURES)
     feature_cols = [c for c in df.columns if not c.startswith("_meta_")]
 
-    reference = df.loc[df["_meta_class"] == "normal", feature_cols].values.astype(np.float64)
+    reference = df.loc[df["_meta_y"] == 0, feature_cols].values.astype(np.float64)
     current = np.load(_RESULTS / "X_test.npy")
 
     if reference.shape[1] != current.shape[1]:
@@ -273,12 +345,12 @@ def _cmd_compare(_args: argparse.Namespace) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(
         prog="python -m src.cli",
-        description="industrial-anomaly-detection pipeline",
+        description="industrial-anomaly-detection pipeline (IMS/NASA bearing dataset)",
     )
     sub = parser.add_subparsers(dest="command", required=True)
-    sub.add_parser("download", help="Download MFPT bearing dataset to data/raw/")
+    sub.add_parser("download", help="Download IMS/NASA dataset via Kaggle CLI → data/raw/")
     sub.add_parser("features", help="Extract features → data/features/features.parquet")
-    sub.add_parser("train", help="Fit IsolationForest on healthy windows")
+    sub.add_parser("train", help="Fit IsolationForest on healthy snapshots")
     sub.add_parser("eval", help="Evaluate with bootstrap CI and save results")
     sub.add_parser("compare", help="Run all 4 models and save comparison table + figure")
     sub.add_parser("explain", help="Generate SHAP explanations → results/figures/shap_*.png")
