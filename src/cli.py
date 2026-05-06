@@ -68,9 +68,12 @@ def _cmd_train(_args: argparse.Namespace) -> None:
     X = df[feature_cols].values.astype(np.float64)
     y = df["_meta_y"].values
 
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.30, stratify=y, random_state=42
-    )
+    # Split on integer indices so we can carry meta columns alongside X/y.
+    indices = np.arange(len(df))
+    idx_train, idx_test = train_test_split(indices, test_size=0.30, stratify=y, random_state=42)
+    X_train, X_test = X[idx_train], X[idx_test]
+    y_train, y_test = y[idx_train], y[idx_test]
+
     X_healthy = X_train[y_train == 0]
 
     logger.info("Fitting IForest on %d healthy windows …", len(X_healthy))
@@ -83,6 +86,12 @@ def _cmd_train(_args: argparse.Namespace) -> None:
     np.save(_RESULTS / "X_test.npy", X_test)
     np.save(_RESULTS / "y_test.npy", y_test)
     logger.info("Test split saved → %s", _RESULTS)
+
+    # Persist class metadata for the test split (needed by explain CLI for per-fault SHAP).
+    meta_cols = [c for c in df.columns if c.startswith("_meta_")]
+    meta_test = df.iloc[idx_test][meta_cols].reset_index(drop=True)
+    meta_test.to_parquet(_RESULTS / "meta_test.parquet", index=False)
+    logger.info("meta_test.parquet saved → %s", _RESULTS / "meta_test.parquet")
 
 
 def _cmd_eval(_args: argparse.Namespace) -> None:
@@ -117,6 +126,72 @@ def _cmd_eval(_args: argparse.Namespace) -> None:
     logger.info("ROC curve → %s", _ROC_PATH)
 
 
+def _cmd_explain(_args: argparse.Namespace) -> None:
+    import numpy as np
+    import pandas as pd
+    import shap as _shap
+
+    from src.explain import DEFAULT_EVAL_SIZE, explain, save_summary_plot
+    from src.models.iforest import IForestDetector
+
+    if not _MODEL_PATH.exists():
+        raise FileNotFoundError(f"Run 'make train' first. Missing: {_MODEL_PATH}")
+    if not (_RESULTS / "X_test.npy").exists():
+        raise FileNotFoundError(f"Run 'make train' first. Missing: {_RESULTS / 'X_test.npy'}")
+    if not _DATA_FEATURES.exists():
+        raise FileNotFoundError(f"Run 'make features' first. Missing: {_DATA_FEATURES}")
+
+    model = IForestDetector.load(_MODEL_PATH)
+    X_test = np.load(_RESULTS / "X_test.npy")
+
+    df = pd.read_parquet(_DATA_FEATURES)
+    feature_names = [c for c in df.columns if not c.startswith("_meta_")]
+
+    # Subsample deterministically so meta rows align with the explained rows.
+    if len(X_test) > DEFAULT_EVAL_SIZE:
+        rng = np.random.default_rng(42)
+        eval_idx = rng.choice(len(X_test), DEFAULT_EVAL_SIZE, replace=False)
+        X_eval = X_test[eval_idx]
+    else:
+        eval_idx = np.arange(len(X_test))
+        X_eval = X_test
+
+    logger.info("Running TreeExplainer on %d windows …", len(X_eval))
+    exp = explain(model, X_eval, feature_names, eval_size=None)
+
+    summary_path = _RESULTS / "figures" / "shap_summary.png"
+    save_summary_plot(exp, summary_path)
+    logger.info("SHAP summary plot → %s", summary_path)
+
+    # Per-fault plots require meta_test.parquet (saved by _cmd_train).
+    meta_path = _RESULTS / "meta_test.parquet"
+    if not meta_path.exists():
+        logger.warning(
+            "meta_test.parquet not found — re-run 'make train' to enable per-fault SHAP plots."
+        )
+        return
+
+    meta_test = pd.read_parquet(meta_path).reset_index(drop=True)
+    meta_eval = meta_test.iloc[eval_idx].reset_index(drop=True)
+
+    for cls in sorted(meta_eval["_meta_class"].unique()):
+        if cls == "normal":
+            continue
+        mask = (meta_eval["_meta_class"] == cls).values
+        if mask.sum() < 5:
+            logger.warning("Skipping per-fault SHAP for '%s' — only %d windows.", cls, mask.sum())
+            continue
+        exp_cls = _shap.Explanation(
+            values=exp.values[mask],
+            base_values=exp.base_values[mask] if exp.base_values is not None else None,
+            data=exp.data[mask],
+            feature_names=feature_names,
+        )
+        fault_path = _RESULTS / "figures" / f"shap_per_fault_{cls}.png"
+        save_summary_plot(exp_cls, fault_path)
+        logger.info("Per-fault SHAP (%s) → %s", cls, fault_path)
+
+
 def _cmd_compare(_args: argparse.Namespace) -> None:
     from src.compare import run_comparison
 
@@ -144,6 +219,7 @@ def main() -> None:
     sub.add_parser("train", help="Fit IsolationForest on healthy windows")
     sub.add_parser("eval", help="Evaluate with bootstrap CI and save results")
     sub.add_parser("compare", help="Run all 4 models and save comparison table + figure")
+    sub.add_parser("explain", help="Generate SHAP explanations → results/figures/shap_*.png")
 
     args = parser.parse_args()
     dispatch = {
@@ -152,6 +228,7 @@ def main() -> None:
         "train": _cmd_train,
         "eval": _cmd_eval,
         "compare": _cmd_compare,
+        "explain": _cmd_explain,
     }
     dispatch[args.command](args)
 

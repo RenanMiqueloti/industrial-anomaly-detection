@@ -6,7 +6,7 @@
 
 **Unsupervised anomaly detection on industrial vibration time-series.** Compares Isolation Forest, One-Class SVM, Local Outlier Factor and a small AutoEncoder on the [CWRU bearing dataset](https://engineering.case.edu/bearingdatacenter), with handcrafted features (RMS, FFT band energy, kurtosis), SHAP explanations, and bootstrap confidence intervals on the metrics.
 
-> **Status:** Sprint 2 done — 4-model comparison (IsolationForest · OC-SVM · LOF · AutoEncoder) with bootstrap CI. See [PLANO.md](PLANO.md) for upcoming sprints.
+> **Status:** Sprint 3 done — SHAP explanations + per-fault attribution (TreeExplainer for IForest, KernelExplainer for OC-SVM / LOF / AutoEncoder). See [PLANO.md](PLANO.md) for upcoming sprints.
 
 ---
 
@@ -87,9 +87,20 @@ make features    # extract features → data/features/features.parquet
 make train       # fit IsolationForest on healthy windows → results/iforest_model.joblib
 make eval        # bootstrap CI → results/iforest_metrics.json + results/figures/iforest_roc.png
 make compare     # train all 4 models → results/comparison.parquet + results/figures/model_comparison.png
+make explain     # SHAP explanations → results/figures/shap_summary.png + shap_per_fault_*.png
 ```
 
-The `explain` and `dashboard` targets land in upcoming sprints — see [PLANO.md](PLANO.md).
+The `dashboard` target lands in a future sprint — see [PLANO.md](PLANO.md).
+
+---
+
+## Explainability
+
+**IsolationForest** uses `shap.TreeExplainer` — exact Shapley values in O(TLD²), exploiting the tree structure of the ensemble. Each SHAP value quantifies how much a feature contributed to that window's anomaly score relative to the expected score over the training distribution.
+
+**OC-SVM, LOF, AutoEncoder** use `shap.KernelExplainer` — model-agnostic sampling-based SHAP. A background of 50 healthy windows is used as the reference distribution; 100 test windows are explained per run.
+
+> Top-3 features by mean |SHAP value| on CWRU test set: _[a preencher após `make explain`]_
 
 ---
 
