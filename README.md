@@ -4,50 +4,50 @@
 ![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)
 ![Python](https://img.shields.io/badge/python-3.12-blue.svg)
 
-**Unsupervised anomaly detection on industrial vibration time-series.**
-Compares Isolation Forest, One-Class SVM, Local Outlier Factor and a small AutoEncoder on the [MFPT bearing dataset](https://figshare.com/articles/dataset/MFPT_zip/28606802), using handcrafted features (RMS, FFT band energy, kurtosis), SHAP explanations, and bootstrap confidence intervals on every reported metric.
+**Detecção de anomalias não supervisionada em séries temporais de vibração industrial.**
+Compara Isolation Forest, One-Class SVM, Local Outlier Factor e um AutoEncoder PyTorch no [dataset MFPT de rolamentos](https://figshare.com/articles/dataset/MFPT_zip/28606802), usando features handcrafted (RMS, energia espectral FFT, curtose), explicações SHAP e intervalos de confiança bootstrap em todas as métricas.
 
-> **Highlights:** ROC-AUC **1.000 \[1.000 – 1.000\]** (OC-SVM / LOF) · F1 **0.817 \[0.779 – 0.856\]** (OC-SVM) · Full pipeline from raw `.mat` to Streamlit dashboard in one command.
-
----
-
-## Why it matters
-
-In industrial predictive maintenance, **labelled fault data is rare** — by the time a bearing fails enough to be labelled, you are already losing money. Unsupervised models trained only on healthy data can flag anomalies before failure, with no labelled rollout cost.
+> **Resultados reais:** ROC-AUC **1.000 \[1.000 – 1.000\]** (OC-SVM / LOF) · F1 **0.817 \[0.779 – 0.856\]** (OC-SVM) · Pipeline completo do `.mat` bruto ao dashboard Streamlit com um único comando.
 
 ---
 
-## What the data looks like
+## Por que isso importa
 
-Before any modelling, it's worth seeing the raw signal difference between a healthy bearing and one with an outer-race fault. The fault introduces periodic impulses visible both in the time domain and as energy peaks in the PSD around the Ball Pass Frequency Outer-race (BPFO ≈ 236 Hz):
+Em manutenção preditiva industrial, **dados rotulados de falha são raros** — quando um rolamento falha vezes suficientes para ser rotulado, o prejuízo já aconteceu. Modelos não supervisionados treinados apenas em dados saudáveis conseguem sinalizar anomalias antes da falha, sem custo de rotulação.
 
-![Signal overview: normal vs outer-race fault waveform and PSD](docs/assets/signal_overview.png)
+---
 
-The 7 time-domain statistics (RMS, peak, crest factor, kurtosis, skewness, std, p2p) and 4 spectral band-energy features directly capture these differences, making the feature engineering step the performance driver rather than the model architecture.
+## Como os dados se parecem
+
+Antes de qualquer modelagem, vale visualizar a diferença entre um rolamento saudável e um com falha na pista externa. A falha introduz impulsos periódicos visíveis no domínio do tempo e como picos de energia na PSD em torno da frequência BPFO (≈ 236 Hz):
+
+![Visão geral do sinal: normal vs falha na pista externa — forma de onda e PSD](docs/assets/signal_overview.png)
+
+As 7 estatísticas no domínio do tempo (RMS, pico, fator de crista, curtose, assimetria, std, p2p) e as 4 colunas de energia espectral por banda capturam diretamente essas diferenças — a engenharia de features é o principal driver de desempenho, não a arquitetura do modelo.
 
 ---
 
 ## Pipeline
 
-![Pipeline overview](docs/assets/pipeline.png)
+![Visão geral do pipeline](docs/assets/pipeline.png)
 
-Each stage maps to a single `make` command:
+Cada etapa corresponde a um único comando `make`:
 
-| Step | Command | Output |
+| Etapa | Comando | Saída |
 |---|---|---|
-| 1 · Download MFPT dataset | `make data` | `data/raw/*.mat` (10 files, ~17 MB) |
-| 2 · Extract features | `make features` | `data/features/features.parquet` (1 140 windows × 11 features) |
-| 3 · Fit on healthy data | `make train` | `results/iforest_model.joblib` |
-| 4 · Evaluate with bootstrap CI | `make eval` | `results/iforest_metrics.json` + ROC curve |
-| 5 · Compare all 4 models | `make compare` | `results/comparison.parquet` + bar chart |
-| 6 · SHAP explanations | `make explain` | `results/figures/shap_*.png` |
-| 7 · Interactive dashboard | `make dashboard` | Streamlit at `http://localhost:8501` |
+| 1 · Baixar dataset MFPT | `make data` | `data/raw/*.mat` (10 arquivos, ~17 MB) |
+| 2 · Extrair features | `make features` | `data/features/features.parquet` (1.140 janelas × 11 features) |
+| 3 · Treinar nos dados saudáveis | `make train` | `results/iforest_model.joblib` |
+| 4 · Avaliar com IC bootstrap | `make eval` | `results/iforest_metrics.json` + curva ROC |
+| 5 · Comparar os 4 modelos | `make compare` | `results/comparison.parquet` + gráfico de barras |
+| 6 · Explicações SHAP | `make explain` | `results/figures/shap_*.png` |
+| 7 · Dashboard interativo | `make dashboard` | Streamlit em `http://localhost:8501` |
 
 ---
 
-## Tutorial — from zero to results
+## Tutorial — do zero aos resultados
 
-### 1. Install
+### 1. Instalar
 
 ```bash
 git clone https://github.com/RenanMiqueloti/industrial-anomaly-detection.git
@@ -55,13 +55,13 @@ cd industrial-anomaly-detection
 make install       # pip install -e ".[dev]"
 ```
 
-### 2. Download dataset
+### 2. Baixar o dataset
 
 ```bash
 make data
 ```
 
-Expected output:
+Saída esperada:
 ```
 INFO Downloading MFPT dataset from https://ndownloader.figshare.com/files/53038079 …
 MFPT: 17.1MB [00:04, …MB/s]
@@ -69,35 +69,35 @@ INFO Extracting to data/raw …
 INFO Done — 10 .mat files extracted to data/raw
 ```
 
-The dataset is the public MFPT bearing benchmark (Bechhoefer 2013): 1 baseline (healthy) + 5 outer-race fault + 4 inner-race fault `.mat` files at 48 828 / 97 656 Hz. Each file embeds its sampling rate in the `bearing.sr` field, so the pipeline adapts automatically.
+O dataset é o benchmark público MFPT de rolamentos (Bechhoefer 2013): 1 baseline (saudável) + 5 arquivos com falha na pista externa + 4 com falha na pista interna, a 48.828 / 97.656 Hz. Cada arquivo embute a taxa de amostragem no campo `bearing.sr`, então o pipeline se adapta automaticamente.
 
-### 3. Extract features
+### 3. Extrair features
 
 ```bash
 make features
 ```
 
-Expected output:
+Saída esperada:
 ```
 INFO Feature matrix: X=(1140, 11)  y=(1140,)  classes={'OR': 570, 'normal': 286, 'IR': 284}
 ```
 
-1 140 non-overlapping 2 048-sample windows. 11 features per window: 7 time-domain + 4 spectral band-energy columns. Saved as `data/features/features.parquet`.
+1.140 janelas sem sobreposição de 2.048 amostras. 11 features por janela: 7 no domínio do tempo + 4 colunas de energia espectral por banda. Salvo em `data/features/features.parquet`.
 
-### 4. Fit model
+### 4. Treinar o modelo
 
 ```bash
 make train
 ```
 
-The IsolationForest (and later all 4 models in `make compare`) is **fitted only on healthy windows** — zero fault labels required. The 30 % held-out split (healthy + faulty, stratified) is saved to `results/X_test.npy` and `results/y_test.npy`.
+O IsolationForest (e depois os 4 modelos em `make compare`) é **treinado apenas nas janelas saudáveis** — zero rótulos de falha necessários. O split de 30% para teste (saudável + com falha, estratificado) é salvo em `results/X_test.npy` e `results/y_test.npy`.
 
 ```
 INFO Fitting IForest on 200 healthy windows …
 INFO Model saved → results/iforest_model.joblib
 ```
 
-### 5. Evaluate with bootstrap CI
+### 5. Avaliar com IC bootstrap
 
 ```bash
 make eval
@@ -108,100 +108,100 @@ INFO ROC-AUC: 1.000  [0.999, 1.000]
 INFO F1:      0.801  [0.758, 0.839]
 ```
 
-The ROC curve below shows the IsolationForest perfectly separating healthy from faulty windows on the MFPT test set:
+A curva ROC abaixo mostra o IsolationForest separando perfeitamente janelas saudáveis das com falha no conjunto de teste MFPT:
 
-![IsolationForest ROC curve](docs/assets/iforest_roc.png)
+![Curva ROC — IsolationForest](docs/assets/iforest_roc.png)
 
-### 6. Compare all 4 models
+### 6. Comparar os 4 modelos
 
 ```bash
 make compare
 ```
 
-Fits and evaluates IsolationForest, One-Class SVM, LOF, and the AutoEncoder on the same held-out set. 1 000-resample bootstrap CI on every metric:
+Treina e avalia IsolationForest, One-Class SVM, LOF e AutoEncoder no mesmo conjunto de teste. IC bootstrap de 1.000 reamostras em cada métrica:
 
-![Model comparison — ROC-AUC and F1 with 95% CI](docs/assets/model_comparison.png)
+![Comparação de modelos — ROC-AUC e F1 com IC 95%](docs/assets/model_comparison.png)
 
-**Actual results on MFPT (May 2025):**
+**Resultados reais no MFPT (maio de 2025):**
 
-| Model | ROC-AUC mean | 95% CI | F1 mean | 95% CI | Train (s) |
+| Modelo | ROC-AUC médio | IC 95% | F1 médio | IC 95% | Treino (s) |
 |---|---|---|---|---|---|
-| IsolationForest | **1.000** | [0.999 – 1.000] | 0.801 | [0.758 – 0.839] | 0.10 |
-| One-Class SVM | **1.000** | [1.000 – 1.000] | **0.817** | [0.779 – 0.856] | 0.00 |
-| LOF | **1.000** | [1.000 – 1.000] | 0.800 | [0.759 – 0.840] | 0.02 |
-| AutoEncoder | 0.994 | [0.988 – 0.998] | 0.800 | [0.759 – 0.840] | 30.24 |
+| IsolationForest | **1,000** | [0,999 – 1,000] | 0,801 | [0,758 – 0,839] | 0,10 |
+| One-Class SVM | **1,000** | [1,000 – 1,000] | **0,817** | [0,779 – 0,856] | 0,00 |
+| LOF | **1,000** | [1,000 – 1,000] | 0,800 | [0,759 – 0,840] | 0,02 |
+| AutoEncoder | 0,994 | [0,988 – 0,998] | 0,800 | [0,759 – 0,840] | 30,24 |
 
-All tree-based / kernel methods achieve perfect ROC-AUC on this dataset. The AutoEncoder lags slightly — consistent with the design notes: with <10⁵ training samples, handcrafted features + shallow models beat end-to-end deep learning.
+Todos os métodos baseados em árvore/kernel atingem ROC-AUC perfeito neste dataset. O AutoEncoder fica levemente atrás — consistente com as notas de design: com menos de 10⁵ amostras de treino, features handcrafted + modelos rasos superam deep learning ponta a ponta.
 
-### 7. SHAP explanations
+### 7. Explicações SHAP
 
 ```bash
 make explain
 ```
 
-TreeExplainer (exact Shapley values) on the IsolationForest shows which features drive each anomaly prediction. Across all test windows:
+O TreeExplainer (valores de Shapley exatos) no IsolationForest mostra quais features impulsionam cada predição de anomalia. Em todas as janelas de teste:
 
-![SHAP summary — all test windows](docs/assets/shap_summary.png)
+![Resumo SHAP — todas as janelas de teste](docs/assets/shap_summary.png)
 
-Breaking down by fault type reveals different feature signatures:
+Ao detalhar por tipo de falha, surgem assinaturas de features distintas:
 
-**Inner-race fault (IR)** — high kurtosis and band-energy in the 1.5–3 kHz range dominate:
+**Falha na pista interna (IR)** — alta curtose e energia espectral na faixa 1,5–3 kHz dominam:
 
-![SHAP per-fault — Inner Race](docs/assets/shap_per_fault_IR.png)
+![SHAP por falha — Pista Interna](docs/assets/shap_per_fault_IR.png)
 
-**Outer-race fault (OR)** — elevated band_0_500 and RMS carry most of the anomaly score:
+**Falha na pista externa (OR)** — band_0_500 elevada e RMS carregam a maior parte do score de anomalia:
 
-![SHAP per-fault — Outer Race](docs/assets/shap_per_fault_OR.png)
+![SHAP por falha — Pista Externa](docs/assets/shap_per_fault_OR.png)
 
 ---
 
-## Reproducibility
+## Reprodutibilidade
 
 ```bash
 make install data features train eval compare explain
 ```
 
-All random seeds are fixed (`random_state=42`). Results above reproduced from a fresh clone with no manual steps.
+Todas as sementes aleatórias são fixas (`random_state=42`). Os resultados acima foram reproduzidos a partir de um clone limpo sem nenhuma etapa manual.
 
 ---
 
 ## Dashboard
 
-An interactive Streamlit dashboard lets you explore score distributions, raw waveforms, and per-window SHAP waterfall charts for any model:
+Um dashboard Streamlit interativo permite explorar distribuições de scores, formas de onda brutas e gráficos SHAP waterfall por janela para qualquer modelo:
 
-![Dashboard preview](docs/assets/dashboard_preview.png)
+![Preview do dashboard](docs/assets/dashboard_preview.png)
 
 **Local (Python):**
 ```bash
-make data features train compare   # one-time pipeline
-make dashboard                     # opens http://localhost:8501
+make data features train compare   # pipeline único (uma vez só)
+make dashboard                     # abre http://localhost:8501
 ```
 
-**Containerized (Docker):**
+**Containerizado (Docker):**
 ```bash
-docker compose up --build          # builds image, starts dashboard
-# open http://localhost:8501
-docker compose down                # teardown
+docker compose up --build          # builda a imagem e inicia o dashboard
+# acesse http://localhost:8501
+docker compose down                # encerra
 ```
 
-If results artifacts are absent, the dashboard shows setup instructions rather than crashing.
+Se os artefatos de resultados estiverem ausentes, o dashboard mostra instruções de configuração em vez de travar.
 
 ---
 
-## Architecture
+## Arquitetura
 
 ```mermaid
 graph LR
-    A([raw .mat<br/>MFPT]) --> B
-    B[ingest<br/>load + window] --> C
-    C[features<br/>RMS · FFT bands · kurtosis] --> D
-    D[scale<br/>RobustScaler] --> E
-    E[fit<br/>healthy windows only] --> F
-    F[score<br/>anomaly score] --> G
-    G[evaluate<br/>ROC-AUC · F1 · CI bootstrap]
+    A([.mat bruto<br/>MFPT]) --> B
+    B[ingestão<br/>carga + janelamento] --> C
+    C[features<br/>RMS · bandas FFT · curtose] --> D
+    D[escala<br/>RobustScaler] --> E
+    E[treino<br/>apenas janelas saudáveis] --> F
+    F[score<br/>score de anomalia] --> G
+    G[avaliação<br/>ROC-AUC · F1 · IC bootstrap]
     F --> H
-    H[explain<br/>SHAP TreeExplainer]
-    H --> I([per-fault<br/>feature attribution])
+    H[explicação<br/>SHAP TreeExplainer]
+    H --> I([atribuição de features<br/>por tipo de falha])
 
     style C fill:#1e293b,color:#e2e8f0
     style E fill:#1e293b,color:#e2e8f0
@@ -213,18 +213,18 @@ graph LR
 
 ## Features
 
-Implemented in [`src/features.py`](src/features.py):
+Implementadas em [`src/features.py`](src/features.py):
 
-**Time-domain** (7): `rms`, `peak`, `crest_factor`, `kurtosis`, `skewness`, `std`, `p2p`
+**Domínio do tempo** (7): `rms`, `peak`, `crest_factor`, `kurtosis`, `skewness`, `std`, `p2p`
 
-**Frequency-domain** (4 band-energy columns via Welch's PSD):
+**Domínio da frequência** (4 colunas de energia espectral via PSD de Welch):
 
-| Band | Range | Maps to |
+| Banda | Faixa | Mapeamento |
 |---|---|---|
-| `band_0_500` | 0–500 Hz | low-frequency imbalance / misalignment |
-| `band_500_1500` | 500–1 500 Hz | FTF / BSF bearing frequencies |
-| `band_1500_3000` | 1 500–3 000 Hz | BPFI / resonance |
-| `band_3000_6000` | 3 000–6 000 Hz | BPFO + harmonics |
+| `band_0_500` | 0–500 Hz | desequilíbrio / desalinhamento de baixa frequência |
+| `band_500_1500` | 500–1.500 Hz | frequências FTF / BSF do rolamento |
+| `band_1500_3000` | 1.500–3.000 Hz | BPFI / ressonância |
+| `band_3000_6000` | 3.000–6.000 Hz | BPFO + harmônicos |
 
 ```python
 from src.features import extract_all
@@ -234,39 +234,39 @@ feats = extract_all(window, fs=48_828)  # → dict[str, float]
 
 ---
 
-## Models
+## Modelos
 
-| Model | Strength | Limitation |
+| Modelo | Ponto forte | Limitação |
 |---|---|---|
-| **Isolation Forest** | Robust to high-dimensional, low-sample regimes | Axis-aligned splits miss interactions |
-| **One-Class SVM (RBF)** | Captures non-linear boundaries | Sensitive to ν / γ; expensive on large training sets |
-| **Local Outlier Factor** | Local density handles clustered failure modes | Requires `novelty=True` for held-out evaluation |
-| **AutoEncoder (PyTorch)** | Reconstruction error encodes complex normality | Overfits with small healthy sets; needs early stopping |
+| **Isolation Forest** | Robusto em regimes de alta dimensão e poucas amostras | Cortes alinhados aos eixos perdem interações |
+| **One-Class SVM (RBF)** | Captura fronteiras não-lineares | Sensível a ν / γ; caro em grandes conjuntos de treino |
+| **Local Outlier Factor** | Densidade local lida bem com modos de falha agrupados | Requer `novelty=True` para avaliação em dados não vistos |
+| **AutoEncoder (PyTorch)** | Erro de reconstrução codifica normalidade complexa | Overfits com conjuntos saudáveis pequenos; precisa de early stopping |
 
-All fitted **only on healthy windows**; evaluated on a held-out healthy + faulty mix.
+Todos treinados **apenas em janelas saudáveis**; avaliados em um mix de janelas saudáveis + com falha.
 
 ---
 
-## Project layout
+## Estrutura do projeto
 
 ```
 industrial-anomaly-detection/
 ├── src/
-│   ├── features.py           # time-domain + FFT band energy
-│   ├── ingest.py             # load_mfpt + window generator
+│   ├── features.py           # domínio do tempo + energia espectral FFT
+│   ├── ingest.py             # load_mfpt + gerador de janelas
 │   ├── dataset.py            # build_feature_matrix → parquet
 │   ├── evaluate.py           # bootstrap_ci + plot_roc + plot_comparison
-│   ├── compare.py            # 4-model benchmark
+│   ├── compare.py            # benchmark com 4 modelos
 │   ├── cli.py                # download | features | train | eval | compare | explain
 │   └── models/
 │       ├── iforest.py        # IForestDetector
 │       ├── ocsvm.py          # OCSVMDetector
 │       ├── lof.py            # LOFDetector
 │       └── autoencoder.py    # AutoEncoderDetector (PyTorch, early stopping)
-├── docs/assets/              # figures committed to the repo
-├── tests/                    # 52 tests (pytest + synthetic fixtures)
-├── data/raw/                 # MFPT .mat files (gitignored, ~17 MB)
-├── results/                  # model artefacts + metrics (gitignored)
+├── docs/assets/              # figuras commitadas no repo
+├── tests/                    # 52 testes (pytest + fixtures sintéticas)
+├── data/raw/                 # arquivos .mat do MFPT (gitignored, ~17 MB)
+├── results/                  # artefatos do modelo + métricas (gitignored)
 ├── Dockerfile
 ├── docker-compose.yml
 ├── Makefile
@@ -275,16 +275,16 @@ industrial-anomaly-detection/
 
 ---
 
-## Design decisions
+## Decisões de design
 
-**Handcrafted features over raw waveforms.**
-On bearing vibration, RMS + crest factor + spectral band energy carry most of the predictive signal. Papers from 2018–2023 consistently show that handcrafted + tree-based ensembles outperform end-to-end CNNs unless the dataset exceeds ~10⁶ windows. The MFPT benchmark has ~10³.
+**Features handcrafted em vez de waveform bruta.**
+Em vibração de rolamentos, RMS + fator de crista + energia espectral por banda carregam a maior parte do sinal preditivo. Artigos de 2018–2023 mostram consistentemente que features handcrafted + ensembles baseados em árvore superam CNNs ponta a ponta, a menos que o dataset ultrapasse ~10⁶ janelas. O benchmark MFPT tem ~10³.
 
-**Unsupervised, not classification.**
-Predictive maintenance hits a label cliff: training only on healthy data and flagging deviations is the only protocol that scales to a fleet of unlabelled machines.
+**Não supervisionado, não classificação.**
+Manutenção preditiva enfrenta uma barreira de rótulos: treinar apenas com dados saudáveis e sinalizar desvios é o único protocolo que escala para uma frota de máquinas sem rótulo.
 
-**Bootstrap CI on every metric.**
-Single ROC-AUC numbers without confidence intervals are noise on small datasets. Every reported figure ships a 95% CI from 1 000 resamples.
+**IC bootstrap em todas as métricas.**
+Números únicos de ROC-AUC sem intervalos de confiança são ruído em datasets pequenos. Cada figura reportada inclui um IC de 95% calculado com 1.000 reamostras.
 
-**SHAP for per-prediction explanations.**
-For IsolationForest, `TreeExplainer` gives exact Shapley values in O(TLD²). For OC-SVM, LOF, and AutoEncoder, `KernelExplainer` provides model-agnostic SHAP with a 50-window healthy background. Both expose the same API for downstream consumers.
+**SHAP para explicações por predição.**
+Para IsolationForest, o `TreeExplainer` fornece valores de Shapley exatos em O(TLD²). Para OC-SVM, LOF e AutoEncoder, o `KernelExplainer` oferece SHAP agnóstico ao modelo com um background de 50 janelas saudáveis. Ambos expõem a mesma API para consumidores downstream.
