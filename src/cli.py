@@ -192,6 +192,58 @@ def _cmd_explain(_args: argparse.Namespace) -> None:
         logger.info("Per-fault SHAP (%s) → %s", cls, fault_path)
 
 
+def _cmd_api(_args: argparse.Namespace) -> None:
+    import subprocess
+    import sys
+
+    result = subprocess.run(
+        ["uvicorn", "src.api:app", "--port", "8000", "--reload"],
+        check=False,
+    )
+    sys.exit(result.returncode)
+
+
+def _cmd_drift(_args: argparse.Namespace) -> None:
+    import numpy as np
+    import pandas as pd
+
+    from src.drift import PSI_ALERT_THRESHOLD, compute_psi_per_feature, flag_drift
+
+    if not _DATA_FEATURES.exists():
+        raise FileNotFoundError(f"Run 'make features' first. Missing: {_DATA_FEATURES}")
+    if not (_RESULTS / "X_test.npy").exists():
+        raise FileNotFoundError(f"Run 'make train' first. Missing: {_RESULTS / 'X_test.npy'}")
+
+    df = pd.read_parquet(_DATA_FEATURES)
+    feature_cols = [c for c in df.columns if not c.startswith("_meta_")]
+
+    reference = df.loc[df["_meta_class"] == "normal", feature_cols].values.astype(np.float64)
+    current = np.load(_RESULTS / "X_test.npy")
+
+    if reference.shape[1] != current.shape[1]:
+        raise ValueError(
+            f"Feature dimension mismatch: reference={reference.shape[1]}, "
+            f"current={current.shape[1]}"
+        )
+
+    psi_dict = compute_psi_per_feature(reference, current, feature_cols)
+    flagged = flag_drift(psi_dict, threshold=PSI_ALERT_THRESHOLD)
+
+    report = {
+        "psi_per_feature": psi_dict,
+        "flagged_features": flagged,
+        "threshold": PSI_ALERT_THRESHOLD,
+    }
+    _RESULTS.mkdir(parents=True, exist_ok=True)
+    (_RESULTS / "drift_report.json").write_text(json.dumps(report, indent=2))
+
+    if flagged:
+        logger.warning("Drift detected in %d features: %s", len(flagged), flagged)
+    else:
+        logger.info("No drift detected (all PSI < %.1f)", PSI_ALERT_THRESHOLD)
+    logger.info("Drift report → %s", _RESULTS / "drift_report.json")
+
+
 def _cmd_compare(_args: argparse.Namespace) -> None:
     from src.compare import run_comparison
 
@@ -220,6 +272,8 @@ def main() -> None:
     sub.add_parser("eval", help="Evaluate with bootstrap CI and save results")
     sub.add_parser("compare", help="Run all 4 models and save comparison table + figure")
     sub.add_parser("explain", help="Generate SHAP explanations → results/figures/shap_*.png")
+    sub.add_parser("api", help="Launch FastAPI dev server at http://localhost:8000")
+    sub.add_parser("drift", help="Compute PSI drift report → results/drift_report.json")
 
     args = parser.parse_args()
     dispatch = {
@@ -229,6 +283,8 @@ def main() -> None:
         "eval": _cmd_eval,
         "compare": _cmd_compare,
         "explain": _cmd_explain,
+        "api": _cmd_api,
+        "drift": _cmd_drift,
     }
     dispatch[args.command](args)
 
