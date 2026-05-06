@@ -25,9 +25,9 @@ def _cmd_download(_args: argparse.Namespace) -> None:
     from tqdm import tqdm
 
     _DATA_RAW.mkdir(parents=True, exist_ok=True)
-    url = (
-        "https://mfpt.org/wp-content/uploads/2020/03/MFPT-Fault-Data-Sets-20200227T131140Z-001.zip"
-    )
+    # Original mfpt.org URL is dead (domain redirected to asnt.org).
+    # Figshare is the canonical stable mirror for the dataset.
+    url = "https://ndownloader.figshare.com/files/53038079"
     zip_path = _DATA_RAW / "mfpt.zip"
 
     logger.info("Downloading MFPT dataset from %s …", url)
