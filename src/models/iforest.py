@@ -9,8 +9,10 @@ import numpy as np
 from sklearn.ensemble import IsolationForest
 from sklearn.preprocessing import RobustScaler
 
+from src.models.base import BaseDetector
 
-class IForestDetector:
+
+class IForestDetector(BaseDetector):
     """Wraps sklearn IsolationForest with a RobustScaler fit on healthy data."""
 
     def __init__(

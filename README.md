@@ -6,7 +6,7 @@
 
 **Unsupervised anomaly detection on industrial vibration time-series.** Compares Isolation Forest, One-Class SVM, Local Outlier Factor and a small AutoEncoder on the [CWRU bearing dataset](https://engineering.case.edu/bearingdatacenter), with handcrafted features (RMS, FFT band energy, kurtosis), SHAP explanations, and bootstrap confidence intervals on the metrics.
 
-> **Status:** Sprint 1 done — IsolationForest baseline with bootstrap CI. Feature extraction module is in place and tested against signal-processing identities. See [PLANO.md](PLANO.md) for the next sprints.
+> **Status:** Sprint 2 done — 4-model comparison (IsolationForest · OC-SVM · LOF · AutoEncoder) with bootstrap CI. See [PLANO.md](PLANO.md) for upcoming sprints.
 
 ---
 
@@ -79,20 +79,21 @@ make install           # pip install -e ".[dev]"
 make test              # pytest -v --cov=src tests/
 ```
 
-Sprint 1 targets are now functional:
+Sprint 1 + 2 targets are now functional:
 
 ```bash
 make data        # clone CWRU mirror → data/raw/
 make features    # extract features → data/features/features.parquet
 make train       # fit IsolationForest on healthy windows → results/iforest_model.joblib
 make eval        # bootstrap CI → results/iforest_metrics.json + results/figures/iforest_roc.png
+make compare     # train all 4 models → results/comparison.parquet + results/figures/model_comparison.png
 ```
 
 The `explain` and `dashboard` targets land in upcoming sprints — see [PLANO.md](PLANO.md).
 
 ---
 
-## Reproducing the baseline
+## Reproducing the results
 
 ```bash
 make install
@@ -100,16 +101,26 @@ make data
 make features
 make train
 make eval
+make compare
 ```
 
-### Baseline metrics (IsolationForest, CWRU subset)
+### IsolationForest baseline metrics (CWRU subset)
 
 | Metric | Mean | 95% CI low | 95% CI high |
 |--------|------|------------|-------------|
 | ROC-AUC | _[fill after `make eval`]_ | — | — |
 | F1 | _[fill after `make eval`]_ | — | — |
 
-> _[a preencher após download manual da CWRU em `data/raw/` se `make data` falhar]_
+### Model comparison
+
+| Model | ROC-AUC mean [95% CI] | F1 mean [95% CI] | Train (s) |
+|-------|-----------------------|------------------|-----------|
+| IsolationForest | — | — | — |
+| OC-SVM | — | — | — |
+| LOF | — | — | — |
+| AutoEncoder | — | — | — |
+
+> _[a preencher após `make compare` com CWRU em `data/raw/`]_
 
 ---
 
@@ -122,25 +133,38 @@ industrial-anomaly-detection/
 │   ├── features.py           # time-domain + FFT band energy
 │   ├── ingest.py             # load_cwru + window generator
 │   ├── dataset.py            # build_feature_matrix → parquet
-│   ├── evaluate.py           # bootstrap_ci + plot_roc
-│   ├── cli.py                # download | features | train | eval
+│   ├── evaluate.py           # bootstrap_ci + plot_roc + plot_comparison
+│   ├── compare.py            # run_comparison — 4-model benchmark
+│   ├── cli.py                # download | features | train | eval | compare
 │   └── models/
 │       ├── __init__.py
-│       └── iforest.py        # IForestDetector (fit/score/save/load)
+│       ├── base.py           # BaseDetector ABC
+│       ├── iforest.py        # IForestDetector
+│       ├── ocsvm.py          # OCSVMDetector
+│       ├── lof.py            # LOFDetector
+│       └── autoencoder.py    # AutoEncoderDetector (PyTorch, early stopping)
 ├── tests/
 │   ├── test_features.py      # 8 physical-truth assertions (Sprint 0)
 │   ├── test_ingest.py        # windowing + synthetic .mat loading
 │   ├── test_dataset.py       # feature matrix construction
 │   ├── test_iforest.py       # fit/score/save/load
 │   ├── test_evaluate.py      # bootstrap CI + ROC plot
-│   └── test_pipeline.py      # end-to-end synthetic pipeline
+│   ├── test_pipeline.py      # end-to-end synthetic pipeline
+│   ├── test_base.py          # BaseDetector ABC contract
+│   ├── test_ocsvm.py         # OC-SVM fit/score/save/load
+│   ├── test_lof.py           # LOF fit/score/save/load + novelty=True
+│   ├── test_autoencoder.py   # AE fit/score/save/load + reproducibility
+│   └── test_compare.py       # 4-model comparison with synthetic data
 ├── data/
 │   ├── raw/                  # CWRU .mat files (gitignored)
 │   └── features/             # parquet feature matrix (gitignored)
 ├── results/
-│   ├── figures/              # ROC plots (gitignored)
+│   ├── figures/              # plots (gitignored)
 │   ├── iforest_model.joblib  # trained model (gitignored)
-│   └── iforest_metrics.json  # bootstrap CI results (gitignored)
+│   ├── iforest_metrics.json  # IForest bootstrap CI (gitignored)
+│   ├── comparison.parquet    # 4-model summary (gitignored)
+│   ├── X_test.npy            # held-out test set (gitignored)
+│   └── y_test.npy            # held-out labels (gitignored)
 ├── .github/workflows/ci.yml
 ├── pyproject.toml
 ├── Makefile
