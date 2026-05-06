@@ -4,9 +4,9 @@
 ![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)
 ![Python](https://img.shields.io/badge/python-3.12-blue.svg)
 
-**Unsupervised anomaly detection on industrial vibration time-series.** Compares Isolation Forest, One-Class SVM, Local Outlier Factor and a small AutoEncoder on the [CWRU bearing dataset](https://engineering.case.edu/bearingdatacenter), with handcrafted features (RMS, FFT band energy, kurtosis), SHAP explanations, and bootstrap confidence intervals on the metrics.
+**Unsupervised anomaly detection on industrial vibration time-series.** Compares Isolation Forest, One-Class SVM, Local Outlier Factor and a small AutoEncoder on the [MFPT bearing dataset](https://www.mfpt.org/fault-data-sets/), with handcrafted features (RMS, FFT band energy, kurtosis), SHAP explanations, and bootstrap confidence intervals on the metrics.
 
-> **Status:** Sprint 4 done — Streamlit dashboard + Docker. Full pipeline from raw CWRU `.mat` files to interactive anomaly explorer in a container. See [PLANO.md](PLANO.md) for upcoming sprints.
+> **Status:** Sprint 4 done — Streamlit dashboard + Docker. Dataset switched to MFPT (direct download, no registration). See [PLANO.md](PLANO.md) for upcoming sprints.
 
 ---
 
@@ -14,7 +14,7 @@
 
 In industrial predictive maintenance, **labelled fault data is rare** — by the time a bearing fails enough times to be labelled, you are already losing money. Unsupervised models trained only on healthy data can flag anomalies before failure, with no labelled rollout cost.
 
-The CWRU dataset is the de facto benchmark for bearing diagnostics: drive-end accelerometer at 12 kHz, four classes (healthy, inner race, outer race, ball), several fault diameters and motor loads. It's small, public, and well-instrumented — perfect for honest model comparison.
+The **MFPT bearing dataset** (Bechhoefer, 2013) is a publicly available, directly downloadable benchmark from the Machinery Failure Prevention Technology Society. It contains 23 `.mat` files — 3 baseline (healthy), 10 outer-race fault, 7 inner-race fault, and 3 real-world samples — at 48 828 Hz / 97 656 Hz. Each file embeds its sampling rate (`bearing.sr`) so the pipeline uses the correct `fs` per signal automatically.
 
 ---
 
@@ -22,7 +22,7 @@ The CWRU dataset is the de facto benchmark for bearing diagnostics: drive-end ac
 
 ```mermaid
 graph LR
-    A([raw .mat<br/>CWRU]) --> B
+    A([raw .mat<br/>MFPT]) --> B
     B[ingest<br/>load + window] --> C
     C[features<br/>RMS · FFT bands · kurtosis] --> D
     D[scale<br/>RobustScaler] --> E
@@ -60,7 +60,7 @@ Implemented in [`src/features.py`](src/features.py), tested against physical tru
 
 **Time-domain** (7 statistics): `rms`, `peak`, `crest_factor`, `kurtosis`, `skewness`, `std`, `p2p`.
 
-**Frequency-domain** (band energy via Welch's PSD, default bands `0–500 / 500–1500 / 1500–3000 / 3000–6000` Hz). Bands map roughly onto the BPFO/BPFI/BSF/FTF families when motor load is held constant.
+**Frequency-domain** (band energy via Welch's PSD, default bands `0–500 / 500–1500 / 1500–3000 / 3000–6000` Hz). Bands map roughly onto the BPFO/BPFI/BSF/FTF bearing characteristic frequencies. The pipeline uses the per-signal sampling rate from the MFPT struct (48 828 or 97 656 Hz), so PSD resolution adapts automatically.
 
 ```python
 from src.features import extract_all
@@ -82,7 +82,7 @@ make test              # pytest -v --cov=src tests/
 Sprint 1 + 2 targets are now functional:
 
 ```bash
-make data        # clone CWRU mirror → data/raw/
+make data        # download MFPT dataset → data/raw/ (~200 MB, direct download)
 make features    # extract features → data/features/features.parquet
 make train       # fit IsolationForest on healthy windows → results/iforest_model.joblib
 make eval        # bootstrap CI → results/iforest_metrics.json + results/figures/iforest_roc.png
@@ -99,7 +99,7 @@ make dashboard   # launch Streamlit dashboard at http://localhost:8501
 
 **OC-SVM, LOF, AutoEncoder** use `shap.KernelExplainer` — model-agnostic sampling-based SHAP. A background of 50 healthy windows is used as the reference distribution; 100 test windows are explained per run.
 
-> Top-3 features by mean |SHAP value| on CWRU test set: _[a preencher após `make explain`]_
+> Top-3 features by mean |SHAP value| on MFPT test set: _[a preencher após `make explain`]_
 
 ---
 
@@ -154,7 +154,7 @@ make eval
 make compare
 ```
 
-### IsolationForest baseline metrics (CWRU subset)
+### IsolationForest baseline metrics (MFPT dataset)
 
 | Metric | Mean | 95% CI low | 95% CI high |
 |--------|------|------------|-------------|
@@ -170,7 +170,7 @@ make compare
 | LOF | — | — | — |
 | AutoEncoder | — | — | — |
 
-> _[a preencher após `make compare` com CWRU em `data/raw/`]_
+> _[a preencher após `make compare` com MFPT em `data/raw/`]_
 
 ---
 
@@ -181,7 +181,7 @@ industrial-anomaly-detection/
 ├── src/
 │   ├── __init__.py
 │   ├── features.py           # time-domain + FFT band energy
-│   ├── ingest.py             # load_cwru + window generator
+│   ├── ingest.py             # load_mfpt + window generator
 │   ├── dataset.py            # build_feature_matrix → parquet
 │   ├── evaluate.py           # bootstrap_ci + plot_roc + plot_comparison
 │   ├── compare.py            # run_comparison — 4-model benchmark

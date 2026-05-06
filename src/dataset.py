@@ -1,4 +1,4 @@
-"""Build feature matrix from raw CWRU signals."""
+"""Build feature matrix from raw MFPT signals."""
 
 from __future__ import annotations
 
@@ -7,8 +7,11 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from src.features import extract_all
-from src.ingest import load_cwru, window
+from src.features import DEFAULT_FS, extract_all
+from src.ingest import load_mfpt, window
+
+# MFPT lower sampling rate (48 828 Hz) used as fallback when sr is missing.
+_MFPT_DEFAULT_FS: int = 48_828
 
 
 def build_feature_matrix(
@@ -16,20 +19,21 @@ def build_feature_matrix(
     out_path: Path | str,
     window_len: int = 2048,
     hop: int = 2048,
-    fs: int = 12_000,
+    fs: int | None = None,
 ) -> tuple[np.ndarray, np.ndarray, pd.DataFrame]:
     """Window every raw signal and extract features.
 
-    Loads all .mat files from *raw_dir*, filters out ``class='unknown'``
-    rows, extracts features from each window, saves a parquet file to
-    *out_path*, and returns ``(X, y, meta)``.
+    Loads all .mat files from *raw_dir*, filters out ``class='unknown'`` rows,
+    extracts features from each window using the per-signal sampling rate from
+    the ``sr`` column (added by :func:`~src.ingest.load_mfpt`).  Falls back to
+    *fs* → ``_MFPT_DEFAULT_FS`` → ``DEFAULT_FS`` if the column is absent.
 
     Parameters
     ----------
-    raw_dir:  directory containing (possibly nested) .mat files.
-    out_path: destination parquet path (parent dirs created as needed).
+    raw_dir:     directory containing (possibly nested) .mat files.
+    out_path:    destination parquet path (parent dirs created as needed).
     window_len, hop: windowing parameters (samples).
-    fs: sampling rate in Hz passed to :func:`~src.features.extract_all`.
+    fs:          override sampling rate; if ``None`` the per-signal ``sr`` is used.
 
     Returns
     -------
@@ -41,15 +45,22 @@ def build_feature_matrix(
     out_path = Path(out_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
-    df_raw = load_cwru(raw_dir)
+    df_raw = load_mfpt(raw_dir)
     df_raw = df_raw[df_raw["class"] != "unknown"].reset_index(drop=True)
 
     feature_rows: list[dict] = []
     meta_rows: list[dict] = []
 
     for _, row in df_raw.iterrows():
+        if fs is not None:
+            signal_fs = fs
+        elif "sr" in row and not pd.isna(row["sr"]):
+            signal_fs = int(row["sr"])
+        else:
+            signal_fs = _MFPT_DEFAULT_FS or DEFAULT_FS
+
         for win_idx, win in enumerate(window(row["signal"], length=window_len, hop=hop)):
-            feats = extract_all(win, fs=fs)
+            feats = extract_all(win, fs=signal_fs)
             feature_rows.append(feats)
             meta_rows.append(
                 {"filename": row["filename"], "class": row["class"], "window_idx": win_idx}
