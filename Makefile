@@ -1,4 +1,4 @@
-.PHONY: install data features train eval compare explain dashboard test lint format clean help
+.PHONY: install data features train eval compare explain dashboard api api-prod drift test lint format clean help
 
 PYTHON ?= python3
 
@@ -12,6 +12,9 @@ help:
 	@echo "  eval        compute metrics with bootstrap CI on a held-out set"
 	@echo "  explain     generate SHAP plots for predicted anomalies"
 	@echo "  dashboard   launch the Streamlit dashboard locally"
+	@echo "  api         launch FastAPI dev server at http://localhost:8000"
+	@echo "  api-prod    launch FastAPI production server (no --reload)"
+	@echo "  drift       compute PSI drift report → results/drift_report.json"
 	@echo "  test        run pytest with coverage"
 	@echo "  lint        run ruff check + format check"
 	@echo "  format      apply ruff format"
@@ -40,6 +43,15 @@ explain:
 
 dashboard:
 	streamlit run src/dashboard.py
+
+api:
+	$(PYTHON) -m src.cli api
+
+api-prod:
+	uvicorn src.api:app --host 0.0.0.0 --port 8000 --workers 1
+
+drift:
+	$(PYTHON) -m src.cli drift
 
 test:
 	$(PYTHON) -m pytest -v --cov=src --cov-report=term-missing tests/

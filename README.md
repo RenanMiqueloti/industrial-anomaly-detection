@@ -6,7 +6,7 @@
 
 **Unsupervised anomaly detection on industrial vibration time-series.** Compares Isolation Forest, One-Class SVM, Local Outlier Factor and a small AutoEncoder on the [MFPT bearing dataset](https://www.mfpt.org/fault-data-sets/), with handcrafted features (RMS, FFT band energy, kurtosis), SHAP explanations, and bootstrap confidence intervals on the metrics.
 
-> **Status:** Sprint 4 done — Streamlit dashboard + Docker. Dataset switched to MFPT (direct download, no registration). See [PLANO.md](PLANO.md) for upcoming sprints.
+> **Status:** Sprint 5 done — FastAPI service + PSI drift detection (optional). Full pipeline from raw CWRU `.mat` files to interactive anomaly explorer in a container, plus a real-time scoring API and feature-drift monitoring. See [PLANO.md](PLANO.md) for upcoming sprints.
 
 ---
 
@@ -124,14 +124,60 @@ If the data artifacts (`results/X_test.npy`, `data/features/`) are absent, the d
 
 ---
 
+## Real-time API (optional)
+
+FastAPI service for single-window scoring and streaming via WebSocket. Requires the `[api]` extras:
+
+```bash
+pip install -e ".[api]"
+make train        # produces results/iforest_model.joblib
+make api          # dev server → http://localhost:8000
+```
+
+Example:
+
+```bash
+# Health check
+curl -fsS http://localhost:8000/health
+
+# Score a window (signal must be ≥ 512 samples)
+curl -X POST http://localhost:8000/score \
+  -H "Content-Type: application/json" \
+  -d '{"signal": [0.01, -0.02, ...], "fs": 12000}'
+```
+
+For production (no auto-reload):
+```bash
+make api-prod     # uvicorn --host 0.0.0.0 --port 8000 --workers 1
+```
+
+---
+
+## Drift monitoring
+
+PSI (Population Stability Index) per feature — compares the healthy reference distribution against the current test set. PSI > 0.2 indicates moderate shift.
+
+```bash
+make data features train   # one-time pipeline
+make drift                 # → results/drift_report.json
+```
+
+`drift_report.json` schema:
+```json
+{
+  "psi_per_feature": {"rms": 0.01, "kurtosis": 0.35, ...},
+  "flagged_features": ["kurtosis"],
+  "threshold": 0.2
+}
+```
+
+---
+
 ## Production deployment
 
 ```bash
-# Build and start
+# Build and start all services
 docker compose up -d --build
-
-# Service URLs
-# dashboard   http://localhost:8501
 
 # Teardown
 docker compose down -v
@@ -140,6 +186,7 @@ docker compose down -v
 | Service | URL |
 |---------|-----|
 | Dashboard | http://localhost:8501 |
+| API | http://localhost:8000 |
 
 ---
 
