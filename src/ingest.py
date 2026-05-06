@@ -33,18 +33,31 @@ _FILE_CLASS_RANGES: list[tuple[range, str]] = [
 
 
 def _infer_class(stem: str) -> str:
-    """Infer fault class from filename stem (case-insensitive keyword + numeric ID)."""
+    """Infer fault class from filename stem (case-insensitive prefix + numeric ID).
+
+    Recognized formats:
+      - "Normal_0", "97.mat" (numeric 97-100)  → "normal"
+      - "IR007_0", file IDs 105-118            → "IR"   (inner race)
+      - "OR007@3_0", file IDs 133-200          → "OR"   (outer race)
+      - "B007_0", "Ball_007", file IDs 119-132 → "B"    (ball)
+    """
     lower = stem.lower()
     if "normal" in lower:
         return "normal"
-    if "ir" in lower or "inner" in lower:
-        return "IR"
-    if re.search(r"\bb\b", lower) or lower.startswith("b_") or "_b_" in lower:
-        return "B"
-    if "or" in lower or "outer" in lower:
+    # Anchored prefixes catch the most common CWRU mirror filenames
+    # (e.g. IR007_0.mat, OR007@3_0.mat, B007_0.mat) without substring
+    # collisions. The previous "ir"/"or"/word-boundary "b" approach silently
+    # mis-classified "B007_0" → "unknown" because the regex \bb\b requires a
+    # word boundary that "b007" does not have.
+    if re.match(r"^or\d", lower) or "outer" in lower:
         return "OR"
+    if re.match(r"^ir\d", lower) or "inner" in lower:
+        return "IR"
+    if re.match(r"^b\d", lower) or "ball" in lower:
+        return "B"
 
-    m = re.search(r"(\d+)", stem)
+    # Numeric ID fallback for the official CWRU file IDs (e.g. "97.mat").
+    m = re.search(r"^(\d+)", stem)
     if m:
         file_id = int(m.group(1))
         for id_range, cls in _FILE_CLASS_RANGES:

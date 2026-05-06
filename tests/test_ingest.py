@@ -58,3 +58,29 @@ def test_load_cwru_empty_raises(tmp_path) -> None:
     """Empty directory raises FileNotFoundError."""
     with pytest.raises(FileNotFoundError):
         load_cwru(tmp_path)
+
+
+def test_infer_class_b_prefix() -> None:
+    """Regression: 'B007_0.mat' must classify as 'B' (ball fault).
+
+    The previous implementation used a word-boundary regex r'\\bb\\b' that
+    failed to match 'b007_0' (no boundary between the 'b' and the digits),
+    silently dropping every ball-fault window from the dataset.
+    """
+    from src.ingest import _infer_class
+
+    assert _infer_class("B007_0") == "B"
+    assert _infer_class("b007_3") == "B"
+    assert _infer_class("Ball_007_0") == "B"
+
+
+def test_infer_class_ir_or_normal_prefix() -> None:
+    """Anchored prefixes catch IR / OR / Normal correctly without substring collisions."""
+    from src.ingest import _infer_class
+
+    assert _infer_class("IR007_0") == "IR"
+    assert _infer_class("OR007@3_0") == "OR"
+    assert _infer_class("Normal_0") == "normal"
+    # The bare digit fallback still works for the official CWRU file IDs.
+    assert _infer_class("97") == "normal"
+    assert _infer_class("105") == "IR"
