@@ -1,4 +1,4 @@
-.PHONY: install data features train eval explain dashboard test lint format clean help
+.PHONY: install data features train eval compare explain dashboard test lint format clean help
 
 PYTHON ?= python3
 
@@ -31,6 +31,9 @@ train:
 
 eval:
 	$(PYTHON) -m src.cli eval
+
+compare:
+	$(PYTHON) -m src.cli compare
 
 explain:
 	@echo "[explain] not implemented yet — see PLANO.md sprint 3"
