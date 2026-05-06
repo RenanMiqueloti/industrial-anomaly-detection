@@ -1,4 +1,4 @@
-"""Evaluation utilities: bootstrap CI and ROC curve plotting."""
+"""Evaluation utilities: bootstrap CI, ROC curve, and model comparison plot."""
 
 from __future__ import annotations
 
@@ -6,6 +6,7 @@ from pathlib import Path
 
 import matplotlib
 import numpy as np
+import pandas as pd
 from sklearn.metrics import f1_score, roc_auc_score, roc_curve
 
 matplotlib.use("Agg")
@@ -54,6 +55,51 @@ def bootstrap_ci(
         return float(arr.mean()), float(np.quantile(arr, lo_q)), float(np.quantile(arr, hi_q))
 
     return {"roc_auc": _stats(roc_aucs), "f1": _stats(f1s)}
+
+
+def plot_comparison(
+    results: pd.DataFrame,
+    out_path: Path = Path("results/figures/model_comparison.png"),
+) -> None:
+    """Bar chart comparing ROC-AUC and F1 across models, with bootstrap CI error bars.
+
+    Two groups (ROC-AUC, F1), four bars each (one per model).
+    Error bars span the 95% bootstrap CI (low, high).
+    Saves PNG to *out_path*; no plt.show().
+    """
+
+    out_path = Path(out_path)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+
+    models = results["model"].tolist()
+    n = len(models)
+    x = np.arange(n)
+    width = 0.35
+
+    fig, axes = plt.subplots(1, 2, figsize=(10, 5), sharey=False)
+
+    for ax, metric, label in [
+        (axes[0], "roc_auc", "ROC-AUC"),
+        (axes[1], "f1", "F1"),
+    ]:
+        means = results[f"{metric}_mean"].values
+        lows = results[f"{metric}_low"].values
+        highs = results[f"{metric}_high"].values
+        yerr = np.array([means - lows, highs - means])
+
+        ax.bar(x, means, width=width * 2, yerr=yerr, capsize=4, alpha=0.8)
+        ax.set_xticks(x)
+        ax.set_xticklabels(models, rotation=15, ha="right")
+        ax.set_ylabel(label)
+        ax.set_title(f"{label} — 95% bootstrap CI")
+        ax.set_ylim(0, 1.05)
+        ax.axhline(0.5, color="k", lw=0.8, linestyle="--", label="random")
+        ax.legend(fontsize=8)
+
+    fig.suptitle("Model Comparison — CWRU Bearing Anomaly Detection", fontsize=12)
+    fig.tight_layout()
+    fig.savefig(out_path, dpi=120)
+    plt.close(fig)
 
 
 def plot_roc(y_true: np.ndarray, scores: np.ndarray, out_path: Path) -> None:
