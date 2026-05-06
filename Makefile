@@ -21,16 +21,16 @@ install:
 	$(PYTHON) -m pip install -e ".[dev]"
 
 data:
-	@echo "[data] not implemented yet — see PLANO.md sprint 1"
+	$(PYTHON) -m src.cli download
 
 features:
-	@echo "[features] not implemented yet — see PLANO.md sprint 1"
+	$(PYTHON) -m src.cli features
 
 train:
-	@echo "[train] not implemented yet — see PLANO.md sprint 1"
+	$(PYTHON) -m src.cli train
 
 eval:
-	@echo "[eval] not implemented yet — see PLANO.md sprint 1"
+	$(PYTHON) -m src.cli eval
 
 explain:
 	@echo "[explain] not implemented yet — see PLANO.md sprint 3"
