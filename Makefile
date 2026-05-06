@@ -39,8 +39,7 @@ explain:
 	$(PYTHON) -m src.cli explain
 
 dashboard:
-	@echo "[dashboard] not implemented yet — see PLANO.md sprint 4"
-	@echo "(once available: streamlit run src/dashboard.py)"
+	streamlit run src/dashboard.py
 
 test:
 	$(PYTHON) -m pytest -v --cov=src --cov-report=term-missing tests/
