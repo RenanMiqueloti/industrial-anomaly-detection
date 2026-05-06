@@ -1,0 +1,12 @@
+services:
+  dashboard:
+    build: .
+    image: industrial-anomaly-detection:local
+    container_name: iad-dashboard
+    ports:
+      - "8501:8501"
+    volumes:
+      # Mount data/ and results/ so trained artifacts persist across container runs.
+      - ./data:/app/data
+      - ./results:/app/results
+    restart: unless-stopped
