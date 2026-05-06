@@ -36,7 +36,7 @@ compare:
 	$(PYTHON) -m src.cli compare
 
 explain:
-	@echo "[explain] not implemented yet — see PLANO.md sprint 3"
+	$(PYTHON) -m src.cli explain
 
 dashboard:
 	@echo "[dashboard] not implemented yet — see PLANO.md sprint 4"
