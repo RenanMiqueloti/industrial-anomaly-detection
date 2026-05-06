@@ -19,25 +19,35 @@ _ROC_PATH = _RESULTS / "figures" / "iforest_roc.png"
 
 
 def _cmd_download(_args: argparse.Namespace) -> None:
-    import subprocess
-    import sys
+    import urllib.request
+    import zipfile
+
+    from tqdm import tqdm
 
     _DATA_RAW.mkdir(parents=True, exist_ok=True)
-    mirror = "https://github.com/jpdias/cwru-bearing-dataset"
-    logger.info("Cloning CWRU mirror: %s", mirror)
-    result = subprocess.run(
-        ["git", "clone", "--depth=1", mirror, str(_DATA_RAW / "cwru-mirror")],
-        capture_output=True,
-        text=True,
+    url = (
+        "https://mfpt.org/wp-content/uploads/2020/03/MFPT-Fault-Data-Sets-20200227T131140Z-001.zip"
     )
-    if result.returncode == 0:
-        logger.info("Mirror cloned to %s", _DATA_RAW / "cwru-mirror")
-    else:
-        logger.warning("Mirror clone failed: %s", result.stderr.strip())
-        logger.warning(
-            "Place .mat files under data/raw/ manually, then re-run: make features train eval"
-        )
-        sys.exit(1)
+    zip_path = _DATA_RAW / "mfpt.zip"
+
+    logger.info("Downloading MFPT dataset from %s …", url)
+
+    class _Progress(tqdm):  # type: ignore[type-arg]
+        def update_to(self, b: int = 1, bsize: int = 1, tsize: int | None = None) -> None:
+            if tsize is not None:
+                self.total = tsize
+            self.update(b * bsize - self.n)
+
+    with _Progress(unit="B", unit_scale=True, unit_divisor=1024, miniters=1, desc="MFPT") as t:
+        urllib.request.urlretrieve(url, zip_path, reporthook=t.update_to)
+
+    logger.info("Extracting to %s …", _DATA_RAW)
+    with zipfile.ZipFile(zip_path, "r") as zf:
+        zf.extractall(_DATA_RAW)
+    zip_path.unlink()
+
+    mat_count = len(list(_DATA_RAW.rglob("*.mat")))
+    logger.info("Done — %d .mat files extracted to %s", mat_count, _DATA_RAW)
 
 
 def _cmd_features(_args: argparse.Namespace) -> None:
@@ -266,7 +276,7 @@ def main() -> None:
         description="industrial-anomaly-detection pipeline",
     )
     sub = parser.add_subparsers(dest="command", required=True)
-    sub.add_parser("download", help="Download CWRU bearing data to data/raw/")
+    sub.add_parser("download", help="Download MFPT bearing dataset to data/raw/")
     sub.add_parser("features", help="Extract features → data/features/features.parquet")
     sub.add_parser("train", help="Fit IsolationForest on healthy windows")
     sub.add_parser("eval", help="Evaluate with bootstrap CI and save results")
