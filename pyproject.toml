@@ -34,6 +34,7 @@ dependencies = [
   "shap>=0.46",
   "matplotlib>=3.9",
   "streamlit>=1.36",
+  "plotly>=5.22",
   "pyarrow>=16",
   "tqdm>=4.66",
 ]
@@ -73,7 +74,7 @@ target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP", "SIM", "RUF"]
-ignore = ["E501", "RUF002", "RUF003"]
+ignore = ["E501", "RUF001", "RUF002", "RUF003"]
 
 [tool.ruff.format]
 quote-style = "double"
