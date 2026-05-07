@@ -34,16 +34,17 @@ def run_comparison(
 ) -> pd.DataFrame:
     """Train all 4 detectors on healthy windows, evaluate with bootstrap CI.
 
-    Uses the same test split produced by ``make train`` (Sprint 1) so results
-    are directly comparable across models.
+    Uses the same temporal split produced by ``make train`` so all four models
+    train on identical healthy windows and score the same held-out test set —
+    critical for a fair comparison.
 
     Parameters
     ----------
     X_test_path, y_test_path:
         Paths to the .npy files saved by ``src.cli train``.
     X_train_path:
-        Path to a .npy of healthy training windows.  When ``None``, derived
-        from the feature parquet at ``data/features/features.parquet``.
+        Path to a .npy of healthy training windows. When ``None``, defaults to
+        ``out_dir / "X_train_healthy.npy"`` (saved by ``cli train``).
     out_dir:
         Directory for ``comparison.parquet`` and the comparison figure.
 
@@ -59,26 +60,14 @@ def run_comparison(
     X_test = np.load(X_test_path)
     y_test = np.load(y_test_path)
 
-    if X_train_path is not None:
-        X_healthy = np.load(X_train_path)
-    else:
-        _parquet = Path("data/features/features.parquet")
-        if not _parquet.exists():
-            raise FileNotFoundError(
-                f"Feature parquet not found at {_parquet}. Run 'make features train' first."
-            )
-        df = pd.read_parquet(_parquet)
-        feature_cols = [c for c in df.columns if not c.startswith("_meta_")]
-        X_all = df[feature_cols].values.astype(np.float64)
-        y_all = df["_meta_y"].values
-        # Use only healthy windows from the training portion (y==0).
-        # We mirror the 70/30 stratified split from cli.py to avoid data leakage.
-        from sklearn.model_selection import train_test_split
-
-        X_tr, _, y_tr, _ = train_test_split(
-            X_all, y_all, test_size=0.30, stratify=y_all, random_state=42
+    if X_train_path is None:
+        X_train_path = out_dir / "X_train_healthy.npy"
+    if not Path(X_train_path).exists():
+        raise FileNotFoundError(
+            f"Healthy training set not found at {X_train_path}. "
+            "Run 'make train' first — it saves X_train_healthy.npy alongside X_test.npy."
         )
-        X_healthy = X_tr[y_tr == 0]
+    X_healthy = np.load(X_train_path)
 
     _MODEL_SAVE_NAMES = {
         "IsolationForest": "iforest_model.joblib",
