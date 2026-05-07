@@ -96,7 +96,7 @@ def plot_comparison(
         ax.axhline(0.5, color="k", lw=0.8, linestyle="--", label="random")
         ax.legend(fontsize=8)
 
-    fig.suptitle("Model Comparison — CWRU Bearing Anomaly Detection", fontsize=12)
+    fig.suptitle("Model Comparison — IMS/NASA Bearing Anomaly Detection", fontsize=12)
     fig.tight_layout()
     fig.savefig(out_path, dpi=120)
     plt.close(fig)

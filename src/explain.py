@@ -14,7 +14,7 @@ Dispatch logic
 
 For KernelExplainer, ``X_background`` controls the reference distribution.
 ``bg_size`` and ``eval_size`` cap the computation; defaults fit a single-core
-CI run in under 60 s on CWRU-sized feature matrices (11 features).
+CI run in under 60 s on IMS-sized feature matrices (11 features).
 """
 
 from __future__ import annotations

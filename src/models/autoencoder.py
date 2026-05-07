@@ -38,7 +38,7 @@ class AutoEncoderDetector(BaseDetector):
     """Symmetric MLP autoencoder with early-stopping on validation MSE.
 
     Score = per-sample MSE between input and reconstruction (higher = more anomalous).
-    Trains on CPU only — CWRU feature matrices fit comfortably in memory.
+    Trains on CPU only — IMS-sized feature matrices fit comfortably in memory.
     """
 
     def __init__(
