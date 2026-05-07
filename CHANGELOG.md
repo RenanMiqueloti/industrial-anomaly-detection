@@ -17,7 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Smoke tests for pure helper functions in `dashboard.py`
   (`_safe_auc`, `_default_threshold`, `_load_all_thresholds`,
   `_get_timestamps`, `_predict_failure`).
-- Issue and pull-request templates under `.github/`.
+- Issue templates under `.github/`.
 - `docs/MODEL_CARD.md` (Mitchell et al. 2019 template) and
   `docs/DATASET.md` (Gebru et al. 2021 datasheet template).
 - `scripts/generate_synthetic_dataset.py` + `make demo` for offline runs
