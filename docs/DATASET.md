@@ -149,7 +149,7 @@ A NASA mantém um pôster de citações no Prognostics Data Repository. Google S
 
 ### Como o dataset é distribuído?
 
-- **Canônico**: <https://data.nasa.gov/dataset/IMS-University-of-Cincinnati-Bearing-Dataset/3yud-nd96> (NASA PCoE Data Repository).
+- **Canônico**: NASA Prognostics Center of Excellence Data Repository (PCoE). Verifique a página atual via busca por "IMS Bearing NASA PCoE" — a NASA reorganizou os links do repositório algumas vezes desde a publicação original.
 - **Mirror prático no Kaggle**: <https://www.kaggle.com/datasets/vinayak123tyagi/bearing-dataset> (usado por este projeto via `kaggle datasets download`).
 
 ### Tamanho
@@ -163,7 +163,7 @@ Dados de origem governamental (NASA) — domínio público nos EUA. O mirror Kag
 
 ### DOI / identificador persistente
 
-NASA Ames Prognostics Data Repository — sem DOI, mas o link `data.nasa.gov` é considerado persistente.
+Não há DOI oficial. Cite a referência canônica (Lee et al., 2007) ao publicar trabalhos baseados no dataset.
 
 ---
 
