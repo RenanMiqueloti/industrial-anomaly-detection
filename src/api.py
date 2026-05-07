@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import warnings
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -31,8 +32,10 @@ from src.models.iforest import IForestDetector
 
 logger = logging.getLogger(__name__)
 
-_MODEL_PATH = Path("results/iforest_model.joblib")
-_THRESHOLD_PATH = Path("results/threshold.json")
+# Paths are configurable via env vars so the same image can be deployed against
+# a mounted-volume artifact directory or a per-environment override.
+_MODEL_PATH = Path(os.getenv("IAD_MODEL_PATH", "results/iforest_model.joblib"))
+_THRESHOLD_PATH = Path(os.getenv("IAD_THRESHOLD_PATH", "results/threshold.json"))
 
 
 class ScoreRequest(BaseModel):
