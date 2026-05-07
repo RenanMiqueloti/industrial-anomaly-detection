@@ -1,4 +1,4 @@
-.PHONY: install data demo features train eval compare explain dashboard api api-prod drift test lint typecheck format clean help
+.PHONY: install download demo features train eval compare explain dashboard api api-prod drift test lint typecheck format clean help
 
 PYTHON ?= python3
 
@@ -6,7 +6,7 @@ help:
 	@echo "industrial-anomaly-detection — make targets"
 	@echo ""
 	@echo "  install     install package + dev deps in editable mode"
-	@echo "  data        download raw IMS/NASA bearing dataset (Run 2) to data/raw/"
+	@echo "  download    download raw IMS/NASA bearing dataset (Run 2) to data/raw/"
 	@echo "  demo        generate a tiny synthetic IMS-like dataset (no Kaggle needed)"
 	@echo "  features    extract time + frequency features → data/features/"
 	@echo "  train       fit unsupervised models on the feature matrix"
@@ -25,7 +25,7 @@ help:
 install:
 	$(PYTHON) -m pip install -e ".[dev]"
 
-data:
+download:
 	$(PYTHON) -m src.cli download
 
 demo:

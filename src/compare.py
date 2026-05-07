@@ -6,6 +6,7 @@ and returns a summary DataFrame with bootstrap CI metrics.
 
 from __future__ import annotations
 
+import os
 import time
 from pathlib import Path
 
@@ -18,6 +19,10 @@ from src.models.iforest import IForestDetector
 from src.models.lof import LOFDetector
 from src.models.ocsvm import OCSVMDetector
 
+# Default artifact directory; overridable via IAD_RESULTS_DIR for deployments
+# that mount results elsewhere (e.g. /var/lib/iad/results).
+_RESULTS_DIR = Path(os.getenv("IAD_RESULTS_DIR", "results"))
+
 _MODELS = {
     "IsolationForest": IForestDetector,
     "OC-SVM": OCSVMDetector,
@@ -27,10 +32,10 @@ _MODELS = {
 
 
 def run_comparison(
-    X_test_path: Path = Path("results/X_test.npy"),
-    y_test_path: Path = Path("results/y_test.npy"),
+    X_test_path: Path | None = None,
+    y_test_path: Path | None = None,
     X_train_path: Path | None = None,
-    out_dir: Path = Path("results"),
+    out_dir: Path | None = None,
 ) -> pd.DataFrame:
     """Train all 4 detectors on healthy windows, evaluate with bootstrap CI.
 
@@ -54,6 +59,12 @@ def run_comparison(
         model, roc_auc_mean, roc_auc_low, roc_auc_high,
         f1_mean, f1_low, f1_high, train_seconds.
     """
+    if out_dir is None:
+        out_dir = _RESULTS_DIR
+    if X_test_path is None:
+        X_test_path = out_dir / "X_test.npy"
+    if y_test_path is None:
+        y_test_path = out_dir / "y_test.npy"
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 

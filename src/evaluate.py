@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import matplotlib
@@ -11,6 +12,10 @@ from sklearn.metrics import f1_score, roc_auc_score, roc_curve
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+
+_DEFAULT_COMPARISON_PNG = (
+    Path(os.getenv("IAD_RESULTS_DIR", "results")) / "figures" / "model_comparison.png"
+)
 
 
 def bootstrap_ci(
@@ -59,7 +64,7 @@ def bootstrap_ci(
 
 def plot_comparison(
     results: pd.DataFrame,
-    out_path: Path = Path("results/figures/model_comparison.png"),
+    out_path: Path = _DEFAULT_COMPARISON_PNG,
 ) -> None:
     """Bar chart comparing ROC-AUC and F1 across models, with bootstrap CI error bars.
 

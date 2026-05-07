@@ -57,6 +57,13 @@ Engenheiros de confiabilidade, técnicos de manutenção, cientistas de dados e 
 | Antecedência da 1ª detecção | 47 horas | (relativa ao último snapshot monitorado) |
 | Falsos alarmes em janelas saudáveis | ≤ 1% por design (limiar = p99 healthy) | calibrado por bearing |
 
+> ⚠️ **Revalidação pendente.** O AUC de 0.8705 foi calculado antes da
+> correção em `compare.py` (split aleatório estratificado → split temporal,
+> ver commit `fix(compare)`). A divisão temporal correta deve ser ligeiramente
+> mais dura. Os números acima serão atualizados após re-rodar
+> `make features train compare` no dataset IMS/NASA Run 2 — esperamos drift
+> de < 0.05 no AUC, mas ainda não foi medido.
+
 ### AUC por rolamento
 
 | Bearing | AUC | Condição real |

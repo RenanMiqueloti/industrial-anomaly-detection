@@ -178,7 +178,7 @@ industrial-anomaly-detection/
 │       ├── ocsvm.py       # OCSVMDetector
 │       ├── lof.py         # LOFDetector
 │       └── autoencoder.py # AutoEncoderDetector (PyTorch, early stopping)
-├── tests/                 # 70 testes (pytest + fixtures sintéticas)
+├── tests/                 # 75+ testes (pytest + fixtures sintéticas)
 ├── docs/assets/           # figuras versionadas no repo
 ├── data/                  # gitignored — gerado pelo pipeline
 ├── results/               # gitignored — gerado pelo pipeline
