@@ -59,6 +59,12 @@ def test_run_comparison_synthetic(tmp_path) -> None:
     assert (tmp_path / "comparison.parquet").exists()
     assert (tmp_path / "figures" / "model_comparison.png").exists()
 
+    # Individual model files saved (required by the dashboard)
+    assert (tmp_path / "iforest_model.joblib").exists()
+    assert (tmp_path / "ocsvm_model.joblib").exists()
+    assert (tmp_path / "lof_model.joblib").exists()
+    assert (tmp_path / "ae_model.joblib").exists()
+
     # CI bounds are sane
     assert (results["roc_auc_low"] <= results["roc_auc_mean"]).all()
     assert (results["roc_auc_mean"] <= results["roc_auc_high"]).all()

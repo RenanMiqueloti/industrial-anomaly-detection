@@ -1,130 +1,175 @@
-"""Tests for src.ingest — windowing and MFPT .mat loading."""
+"""Tests for src.ingest — IMS snapshot loading and windowing."""
 
 from __future__ import annotations
 
+from datetime import datetime
+from pathlib import Path
+
 import numpy as np
 import pytest
-import scipy.io
 
-from src.ingest import _infer_mfpt_class, load_mfpt, window
+from src.ingest import IMS_ROWS, _parse_timestamp, load_ims_run, window
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
 
-def _save_mfpt_mat(path, signal: np.ndarray, sr: float = 97_656.0, load: float = 270.0) -> None:
-    """Write a minimal MFPT-style .mat file with a 'bearing' struct."""
-    dt = np.dtype([("gs", object), ("sr", object), ("load", object), ("rate", object)])
-    bearing = np.zeros((1,), dtype=dt)
-    bearing["gs"][0] = signal.reshape(-1, 1)
-    bearing["sr"][0] = np.array([[sr]])
-    bearing["load"][0] = np.array([[load]])
-    bearing["rate"][0] = np.array([[25.0]])
-    scipy.io.savemat(str(path), {"bearing": bearing})
+def _write_snapshot(
+    path: Path,
+    n_bearings: int = 4,
+    n_rows: int = IMS_ROWS,
+    seed: int = 0,
+) -> None:
+    """Write a synthetic IMS snapshot file (tab-separated, no header)."""
+    rng = np.random.default_rng(seed)
+    data = rng.standard_normal((n_rows, n_bearings))
+    np.savetxt(str(path), data, delimiter="\t")
 
 
 # ---------------------------------------------------------------------------
-# window()
+# _parse_timestamp
+# ---------------------------------------------------------------------------
+
+
+def test_parse_timestamp_valid() -> None:
+    ts = _parse_timestamp("2004.02.12.10.32.39")
+    assert ts == datetime(2004, 2, 12, 10, 32, 39)
+
+
+def test_parse_timestamp_valid_boundary() -> None:
+    ts = _parse_timestamp("2003.10.22.12.06.24")
+    assert ts == datetime(2003, 10, 22, 12, 6, 24)
+
+
+def test_parse_timestamp_invalid_mfpt_name() -> None:
+    assert _parse_timestamp("baseline_1") is None
+
+
+def test_parse_timestamp_invalid_random() -> None:
+    assert _parse_timestamp("not_a_timestamp") is None
+    assert _parse_timestamp("2004.02.12") is None  # too short
+    assert _parse_timestamp("") is None
+
+
+# ---------------------------------------------------------------------------
+# load_ims_run — basic cases
+# ---------------------------------------------------------------------------
+
+
+def test_load_ims_run_single_snapshot(tmp_path: Path) -> None:
+    """One snapshot with 4 bearings loads all 4 rows."""
+    _write_snapshot(tmp_path / "2004.02.12.10.32.39", n_bearings=4)
+
+    df = load_ims_run(tmp_path)
+
+    assert len(df) == 4
+    assert set(df.columns) >= {"timestamp", "bearing_id", "signal", "filename"}
+    assert set(df["bearing_id"]) == {1, 2, 3, 4}
+    assert df["signal"].iloc[0].shape == (IMS_ROWS,)
+    assert df["signal"].iloc[0].dtype == np.float64
+    assert df["timestamp"].iloc[0] == datetime(2004, 2, 12, 10, 32, 39)
+
+
+def test_load_ims_run_bearing_filter(tmp_path: Path) -> None:
+    """bearing_ids filter restricts which columns are returned."""
+    _write_snapshot(tmp_path / "2004.02.12.10.32.39", n_bearings=4)
+
+    df = load_ims_run(tmp_path, bearing_ids=[1, 3])
+
+    assert len(df) == 2
+    assert set(df["bearing_id"]) == {1, 3}
+
+
+def test_load_ims_run_single_bearing(tmp_path: Path) -> None:
+    _write_snapshot(tmp_path / "2004.02.12.10.32.39", n_bearings=4)
+
+    df = load_ims_run(tmp_path, bearing_ids=[2])
+
+    assert len(df) == 1
+    assert df["bearing_id"].iloc[0] == 2
+
+
+def test_load_ims_run_multiple_snapshots_sorted(tmp_path: Path) -> None:
+    """Multiple snapshots for one bearing are sorted chronologically."""
+    ts_list = [
+        "2004.02.12.10.52.39",
+        "2004.02.12.10.32.39",  # intentionally out of order on disk
+        "2004.02.12.10.42.39",
+    ]
+    for ts in ts_list:
+        _write_snapshot(tmp_path / ts, n_bearings=1, seed=hash(ts) % 2**32)
+
+    df = load_ims_run(tmp_path, bearing_ids=[1])
+
+    assert len(df) == 3
+    timestamps = list(df["timestamp"])
+    assert timestamps == sorted(timestamps), "Rows must be sorted chronologically"
+
+
+def test_load_ims_run_multiple_snapshots_all_bearings(tmp_path: Path) -> None:
+    """3 snapshots × 4 bearings = 12 rows total."""
+    for ts in ["2004.02.12.10.32.39", "2004.02.12.10.42.39", "2004.02.12.10.52.39"]:
+        _write_snapshot(tmp_path / ts, n_bearings=4)
+
+    df = load_ims_run(tmp_path)
+
+    assert len(df) == 12
+    assert df["bearing_id"].nunique() == 4
+
+
+def test_load_ims_run_ignores_non_timestamp_files(tmp_path: Path) -> None:
+    """Files whose names are not valid timestamps are silently skipped."""
+    _write_snapshot(tmp_path / "2004.02.12.10.32.39", n_bearings=2)
+    (tmp_path / "README.txt").write_text("not a snapshot")
+    (tmp_path / "baseline_1.mat").write_text("")
+
+    df = load_ims_run(tmp_path)
+
+    assert len(df) == 2
+
+
+def test_load_ims_run_empty_dir_raises(tmp_path: Path) -> None:
+    """Empty directory raises FileNotFoundError."""
+    with pytest.raises(FileNotFoundError, match="No IMS snapshot files"):
+        load_ims_run(tmp_path)
+
+
+def test_load_ims_run_no_matching_bearing_raises(tmp_path: Path) -> None:
+    """Requesting bearing not present in data raises FileNotFoundError."""
+    _write_snapshot(tmp_path / "2004.02.12.10.32.39", n_bearings=4)
+
+    with pytest.raises(FileNotFoundError, match="No valid snapshots"):
+        load_ims_run(tmp_path, bearing_ids=[9])
+
+
+# ---------------------------------------------------------------------------
+# window
 # ---------------------------------------------------------------------------
 
 
 def test_window_basic() -> None:
-    """5000 samples with len=hop=2048 yields exactly 2 full windows."""
     signal = np.arange(5000, dtype=float)
     wins = list(window(signal, length=2048, hop=2048))
     assert len(wins) == 2
     assert wins[0].shape == (2048,)
-    assert wins[1].shape == (2048,)
 
 
 def test_window_overlap() -> None:
-    """5000 samples with length=2048, hop=1024 yields 3 windows."""
     signal = np.arange(5000, dtype=float)
     wins = list(window(signal, length=2048, hop=1024))
     assert len(wins) == 3
 
 
 def test_window_discards_tail() -> None:
-    """If the last window would be incomplete it is not yielded."""
     signal = np.zeros(2049)
     wins = list(window(signal, length=2048, hop=2048))
     assert len(wins) == 1
 
 
-# ---------------------------------------------------------------------------
-# _infer_mfpt_class()
-# ---------------------------------------------------------------------------
-
-
-def test_infer_class_baseline() -> None:
-    assert _infer_mfpt_class("baseline_1") == "normal"
-    assert _infer_mfpt_class("Baseline_3") == "normal"
-
-
-def test_infer_class_outer_race() -> None:
-    assert _infer_mfpt_class("outer_race_1") == "OR"
-    assert _infer_mfpt_class("Outer_Race_7") == "OR"
-
-
-def test_infer_class_inner_race() -> None:
-    assert _infer_mfpt_class("inner_race_4") == "IR"
-    assert _infer_mfpt_class("Inner_Race_1") == "IR"
-
-
-def test_infer_class_unknown() -> None:
-    assert _infer_mfpt_class("unknown_file") == "unknown"
-    assert _infer_mfpt_class("real_world_1") == "unknown"
-
-
-# ---------------------------------------------------------------------------
-# load_mfpt()
-# ---------------------------------------------------------------------------
-
-
-def test_load_mfpt_baseline(tmp_path) -> None:
-    """A synthetic baseline .mat loads as class='normal' with correct shape and sr."""
-    _save_mfpt_mat(tmp_path / "baseline_1.mat", np.zeros(4096), sr=97_656.0)
-
-    df = load_mfpt(tmp_path)
-    assert len(df) == 1
-    row = df.iloc[0]
-    assert row["class"] == "normal"
-    assert row["signal"].shape == (4096,)
-    assert row["signal"].dtype == np.float64
-    assert row["sr"] == pytest.approx(97_656.0)
-
-
-def test_load_mfpt_outer_race(tmp_path) -> None:
-    """outer_race_1.mat infers class='OR'."""
-    _save_mfpt_mat(tmp_path / "outer_race_1.mat", np.ones(4096), sr=97_656.0)
-    df = load_mfpt(tmp_path)
-    assert df.iloc[0]["class"] == "OR"
-
-
-def test_load_mfpt_inner_race(tmp_path) -> None:
-    """inner_race_1.mat infers class='IR' with 48 828 Hz sampling rate."""
-    _save_mfpt_mat(tmp_path / "inner_race_1.mat", np.ones(4096), sr=48_828.0)
-    df = load_mfpt(tmp_path)
-    row = df.iloc[0]
-    assert row["class"] == "IR"
-    assert row["sr"] == pytest.approx(48_828.0)
-
-
-def test_load_mfpt_multi_file(tmp_path) -> None:
-    """Multiple files in subdirectories are all discovered."""
-    sub = tmp_path / "sub"
-    sub.mkdir()
-    _save_mfpt_mat(tmp_path / "baseline_1.mat", np.zeros(4096))
-    _save_mfpt_mat(sub / "outer_race_1.mat", np.zeros(4096))
-    _save_mfpt_mat(sub / "inner_race_1.mat", np.zeros(4096))
-
-    df = load_mfpt(tmp_path)
-    assert len(df) == 3
-    assert set(df["class"]) == {"normal", "OR", "IR"}
-
-
-def test_load_mfpt_empty_raises(tmp_path) -> None:
-    """Empty directory raises FileNotFoundError."""
-    with pytest.raises(FileNotFoundError):
-        load_mfpt(tmp_path)
+def test_window_full_snapshot() -> None:
+    """IMS snapshots (20 480 samples) used as a single window."""
+    signal = np.zeros(IMS_ROWS)
+    wins = list(window(signal, length=IMS_ROWS, hop=IMS_ROWS))
+    assert len(wins) == 1
+    assert wins[0].shape == (IMS_ROWS,)

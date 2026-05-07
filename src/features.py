@@ -13,7 +13,7 @@ faults from healthy noise, and band energy isolates the BPFO/BPFI/BSF/FTF
 characteristic frequencies into coarser buckets.
 
 Reference signal model: zero-mean acceleration in g, sampled at fs (default
-12 kHz for the CWRU bearing dataset).
+20 kHz for the IMS/NASA bearing dataset).
 """
 
 from __future__ import annotations
@@ -24,12 +24,12 @@ import numpy as np
 from scipy import signal as sig
 from scipy import stats
 
-DEFAULT_FS: int = 12_000  # CWRU drive-end bearing sampling rate (Hz)
+DEFAULT_FS: int = 20_000  # IMS/NASA bearing dataset sampling rate (Hz)
 DEFAULT_BANDS: tuple[tuple[float, float], ...] = (
     (0.0, 500.0),
-    (500.0, 1500.0),
-    (1500.0, 3000.0),
-    (3000.0, 6000.0),
+    (500.0, 2_000.0),
+    (2_000.0, 5_000.0),
+    (5_000.0, 10_000.0),
 )
 
 
