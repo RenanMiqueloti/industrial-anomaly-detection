@@ -1,7 +1,7 @@
 """Tests for src/api.py — FastAPI endpoints with a synthetic trained model.
 
 All tests use a monkeypatched _MODEL_PATH pointing to a tiny IForestDetector
-trained on synthetic data, so no CWRU pipeline run is required.
+trained on synthetic data, so no real dataset pipeline run is required.
 """
 
 from __future__ import annotations
@@ -35,7 +35,28 @@ def model_dir(tmp_path_factory: pytest.TempPathFactory) -> Path:
     model.save(model_path)
 
     threshold_path = d / "threshold.json"
-    threshold_path.write_text(json.dumps({"iforest": 0.5}))
+    # New sidecar format: explicit thresholds dict + feature_order + legacy flat keys.
+    feature_order = [
+        "rms",
+        "peak",
+        "crest_factor",
+        "kurtosis",
+        "skewness",
+        "std",
+        "p2p",
+        "band_0_500",
+        "band_500_2000",
+        "band_2000_5000",
+        "band_5000_10000",
+    ]
+    sidecar = {
+        "thresholds": {"iforest": 0.5, "iforest_b1": 0.40, "iforest_b2": 0.55},
+        "feature_order": feature_order,
+        "iforest": 0.5,
+        "iforest_b1": 0.40,
+        "iforest_b2": 0.55,
+    }
+    threshold_path.write_text(json.dumps(sidecar))
 
     return d
 
@@ -99,3 +120,58 @@ def test_websocket_stream(client: TestClient) -> None:
             assert "is_anomaly" in data
             assert isinstance(data["score"], float)
             assert isinstance(data["is_anomaly"], bool)
+
+
+def test_score_with_bearing_id_uses_per_bearing_threshold(client: TestClient) -> None:
+    """POST /score with bearing_id=1 returns the per-bearing threshold (0.40)."""
+    payload = {"signal": _make_signal(2048), "fs": 20000, "bearing_id": 1}
+    resp = client.post("/score", json=payload)
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["bearing_id"] == 1
+    assert body["threshold"] == pytest.approx(0.40)
+
+
+def test_score_falls_back_to_global_for_unknown_bearing(client: TestClient) -> None:
+    """POST /score with an unknown bearing_id falls back to the global threshold."""
+    payload = {"signal": _make_signal(2048), "fs": 20000, "bearing_id": 99}
+    resp = client.post("/score", json=payload)
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["bearing_id"] == 99
+    assert body["threshold"] == pytest.approx(0.5)
+
+
+def test_health_exposes_per_bearing_thresholds(client: TestClient) -> None:
+    """GET /health surfaces per-bearing thresholds calibrated at training time."""
+    resp = client.get("/health")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert "per_bearing_thresholds" in body
+    assert body["per_bearing_thresholds"] == {"1": pytest.approx(0.40), "2": pytest.approx(0.55)}
+
+
+def test_websocket_returns_validation_error_for_short_signal(client: TestClient) -> None:
+    """WS /stream replies with an error envelope on validation failure, no disconnect."""
+    with client.websocket_connect("/stream") as ws:
+        ws.send_json({"signal": [0.0] * 10, "fs": 20000})  # too short
+        data = ws.receive_json()
+        assert data["error"] == "validation_error"
+        # Connection still alive — send a valid window next.
+        ws.send_json({"signal": _make_signal(2048), "fs": 20000})
+        data = ws.receive_json()
+        assert "score" in data
+
+
+def test_cors_headers_present(client: TestClient) -> None:
+    """OPTIONS preflight returns Access-Control-Allow-Origin header."""
+    resp = client.options(
+        "/score",
+        headers={
+            "origin": "http://localhost:8501",
+            "access-control-request-method": "POST",
+        },
+    )
+    # Starlette returns 200 for the preflight when CORS middleware is installed.
+    assert resp.status_code == 200
+    assert "access-control-allow-origin" in {k.lower() for k in resp.headers}

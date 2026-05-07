@@ -139,7 +139,7 @@ def extract_all(
 
     Args:
         x: 1-D vibration window.
-        fs: sampling rate in Hz (default 12 kHz, CWRU drive-end).
+        fs: sampling rate in Hz (default 20 kHz, IMS/NASA bearing dataset).
         bands: optional override for frequency bands. ``None`` uses
             :data:`DEFAULT_BANDS`.
 
