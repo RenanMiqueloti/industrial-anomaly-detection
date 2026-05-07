@@ -10,6 +10,8 @@ Modelos treinados **exclusivamente em dados saudáveis** — sem nenhum rótulo 
 
 > **Resultado principal — Bearing 1 (IMS/NASA Run 2):**
 > AUC = **0.8705** (dataset completo) · Primeira detecção **47 horas antes** do fim do período monitorado · limiar calibrado a ≤ 1% de falsos alarmes por rolamento.
+>
+> Esse número foi medido antes do conserto do split em `compare.py` (split aleatório → split temporal). Pendente de regenerar com o pipeline atual; ver [MODEL_CARD](docs/MODEL_CARD.md).
 
 ---
 
