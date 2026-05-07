@@ -277,3 +277,10 @@ make dashboard
 ```
 
 Todas as sementes aleatórias são fixas (`random_state=42`). Os resultados foram gerados a partir de um clone limpo sem nenhuma etapa manual além da configuração do `kaggle.json`.
+
+---
+
+## Documentação adicional
+
+- **[Model Card](docs/MODEL_CARD.md)** — uso pretendido, métricas com IC, limitações conhecidas, considerações éticas.
+- **[Dataset Datasheet](docs/DATASET.md)** — composição do IMS/NASA Run 2, processo de coleta, splits recomendados, licença.
