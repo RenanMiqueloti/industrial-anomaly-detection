@@ -80,12 +80,21 @@ def run_comparison(
         )
         X_healthy = X_tr[y_tr == 0]
 
+    _MODEL_SAVE_NAMES = {
+        "IsolationForest": "iforest_model.joblib",
+        "OC-SVM": "ocsvm_model.joblib",
+        "LOF": "lof_model.joblib",
+        "AutoEncoder": "ae_model.joblib",
+    }
+
     rows = []
     for name, ModelCls in _MODELS.items():
         model = ModelCls()
         t0 = time.perf_counter()
         model.fit(X_healthy)
         train_s = time.perf_counter() - t0
+
+        model.save(out_dir / _MODEL_SAVE_NAMES[name])
 
         scores = model.score(X_test)
         ci = bootstrap_ci(y_test, scores)
