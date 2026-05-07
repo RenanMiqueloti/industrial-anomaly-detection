@@ -90,15 +90,3 @@ def build_ims_features(
     out_df.to_parquet(out_path, index=False)
 
     return X, y, meta
-
-
-# Keep a thin compatibility shim so any stale imports don't crash immediately.
-# This alias will be removed in a future cleanup pass.
-def build_feature_matrix(
-    raw_dir: Path | str,
-    out_path: Path | str,
-    **_kwargs,
-) -> tuple[np.ndarray, np.ndarray, pd.DataFrame]:  # pragma: no cover
-    raise NotImplementedError(
-        "build_feature_matrix was removed. Use build_ims_features() for IMS data."
-    )

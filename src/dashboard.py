@@ -18,6 +18,7 @@ Rolamento 1: falha na pista externa (outer race) ao final do período.
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 
 import matplotlib
@@ -36,6 +37,8 @@ from src.models.autoencoder import AutoEncoderDetector
 from src.models.iforest import IForestDetector
 from src.models.lof import LOFDetector
 from src.models.ocsvm import OCSVMDetector
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Paths
@@ -220,8 +223,14 @@ def _default_threshold(
             for key in [f"{base_key}_b{bearing_id}" if bearing_id else None, base_key]:
                 if key and key in data:
                     return float(data[key])
-        except Exception:
-            pass
+        except (json.JSONDecodeError, ValueError, OSError) as exc:
+            logger.warning(
+                "Could not read %s for model=%s bearing=%s: %s — falling back to data-derived p99.",
+                _THRESHOLD_JSON,
+                model_name,
+                bearing_id,
+                exc,
+            )
     normal_mask = y_test == 0
     if normal_mask.any():
         return float(np.percentile(scores[normal_mask], 99))
@@ -293,12 +302,20 @@ def _safe_auc(y_true: np.ndarray, scores: np.ndarray) -> float | None:
         return None
     try:
         return float(roc_auc_score(y_true, scores))
-    except Exception:
+    except ValueError as exc:
+        # roc_auc_score raises ValueError when y_true is degenerate (only one
+        # class) or scores contain NaN/inf. Logged so it's traceable instead
+        # of disappearing as None on the dashboard.
+        logger.debug("roc_auc_score returned ValueError: %s", exc)
         return None
 
 
 def _load_all_thresholds(model_name: str) -> dict[int, float]:
-    """Load per-bearing thresholds for the given model. Returns {bearing_id: threshold}."""
+    """Load per-bearing thresholds for the given model. Returns {bearing_id: threshold}.
+
+    Returns an empty dict when the threshold file is missing or unreadable —
+    the caller is expected to treat empty as "no per-bearing calibration".
+    """
     if not _THRESHOLD_JSON.exists():
         return {}
     try:
@@ -307,7 +324,8 @@ def _load_all_thresholds(model_name: str) -> dict[int, float]:
         return {
             b: float(data[f"{base_key}_b{b}"]) for b in [1, 2, 3, 4] if f"{base_key}_b{b}" in data
         }
-    except Exception:
+    except (json.JSONDecodeError, ValueError, OSError) as exc:
+        logger.warning("Could not load per-bearing thresholds for %s: %s", model_name, exc)
         return {}
 
 

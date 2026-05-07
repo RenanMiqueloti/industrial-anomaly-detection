@@ -85,6 +85,22 @@ testpaths = ["tests"]
 python_files = "test_*.py"
 addopts = "-ra --strict-markers"
 
+[tool.coverage.run]
+source = ["src"]
+# Exclude entry-point / UI glue from coverage; they're exercised by integration not unit tests.
+omit = [
+  "src/cli.py",
+  "src/dashboard.py",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+  "pragma: no cover",
+  "raise NotImplementedError",
+  "if __name__ == .__main__.:",
+  "if TYPE_CHECKING:",
+]
+
 [tool.mypy]
 python_version = "3.12"
 warn_unused_configs = true

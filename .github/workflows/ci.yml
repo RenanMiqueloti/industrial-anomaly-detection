@@ -21,14 +21,58 @@ jobs:
       - run: ruff check .
       - run: ruff format --check .
 
-  test:
-    name: test (pytest)
+  typecheck:
+    name: typecheck (mypy)
     runs-on: ubuntu-latest
+    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
           cache: pip
-      - run: pip install -e ".[dev]"
-      - run: pytest -v --cov=src --cov-report=term-missing tests/
+      - run: pip install -e ".[dev,api]"
+      - run: mypy src/
+
+  audit:
+    name: audit (pip-audit)
+    runs-on: ubuntu-latest
+    # Don't gate the build on transient advisories; surface them in the run log
+    # and let humans triage. Flip to false once the project has a tighter
+    # dependency policy and known advisories are addressed.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -e ".[dev,api]"
+      - run: pip install pip-audit
+      # --skip-editable: don't try to audit our own package (not on PyPI).
+      - run: pip-audit --strict --progress-spinner=off --skip-editable
+
+  test:
+    name: test (pytest, ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+      # Install api extras too — without fastapi/httpx, tests/test_api.py is
+      # skipped, src/api.py drops to 0% coverage and the project total falls
+      # below the 85% threshold.
+      - run: pip install -e ".[dev,api]"
+      - run: pytest -v --cov=src --cov-report=term-missing --cov-report=xml --cov-fail-under=85 tests/
+      - name: Upload coverage to Codecov
+        if: matrix.python-version == '3.12'
+        uses: codecov/codecov-action@v4
+        with:
+          files: coverage.xml
+          fail_ci_if_error: false
