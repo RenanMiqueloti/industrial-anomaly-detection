@@ -1,4 +1,4 @@
-.PHONY: install data features train eval compare explain dashboard api api-prod drift test lint format clean help
+.PHONY: install download demo features train eval compare explain dashboard api api-prod drift test lint typecheck format clean help
 
 PYTHON ?= python3
 
@@ -6,7 +6,8 @@ help:
 	@echo "industrial-anomaly-detection — make targets"
 	@echo ""
 	@echo "  install     install package + dev deps in editable mode"
-	@echo "  data        download raw CWRU bearing dataset to data/raw/"
+	@echo "  download    download raw IMS/NASA bearing dataset (Run 2) to data/raw/"
+	@echo "  demo        generate a tiny synthetic IMS-like dataset (no Kaggle needed)"
 	@echo "  features    extract time + frequency features → data/features/"
 	@echo "  train       fit unsupervised models on the feature matrix"
 	@echo "  eval        compute metrics with bootstrap CI on a held-out set"
@@ -17,14 +18,18 @@ help:
 	@echo "  drift       compute PSI drift report → results/drift_report.json"
 	@echo "  test        run pytest with coverage"
 	@echo "  lint        run ruff check + format check"
+	@echo "  typecheck   run mypy on src/"
 	@echo "  format      apply ruff format"
 	@echo "  clean       remove caches, build artefacts and coverage"
 
 install:
 	$(PYTHON) -m pip install -e ".[dev]"
 
-data:
+download:
 	$(PYTHON) -m src.cli download
+
+demo:
+	$(PYTHON) scripts/generate_synthetic_dataset.py
 
 features:
 	$(PYTHON) -m src.cli features
@@ -59,6 +64,9 @@ test:
 lint:
 	ruff check .
 	ruff format --check .
+
+typecheck:
+	$(PYTHON) -m mypy src/
 
 format:
 	ruff format .

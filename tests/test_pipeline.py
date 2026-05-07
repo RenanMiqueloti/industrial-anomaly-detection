@@ -1,6 +1,6 @@
 """End-to-end synthetic pipeline test.
 
-Runs entirely in-memory: no file I/O, no CWRU download required.
+Runs entirely in-memory: no file I/O, no real dataset download required.
 Must complete in < 30 s on a modern laptop.
 """
 

@@ -183,12 +183,27 @@ def _cmd_train(_args: argparse.Namespace) -> None:
             thresholds[f"iforest_b{bid}"] = thr_bid
             logger.info("Threshold bearing %d (p99 healthy): %.4f", bid, thr_bid)
 
+    # Serialise the exact feature column order the model was trained on, so
+    # downstream consumers (api.py, dashboard) can build feature vectors by
+    # name lookup instead of relying on dict iteration order.
+    sidecar = {
+        "thresholds": thresholds,
+        "feature_order": feature_cols,
+        # Keep the legacy flat threshold keys at the top level for backward
+        # compatibility with anything that read threshold.json before this
+        # change. New code should use thresholds[...] / feature_order.
+        **thresholds,
+    }
     threshold_path = _RESULTS / "threshold.json"
-    threshold_path.write_text(json.dumps(thresholds, indent=2))
+    threshold_path.write_text(json.dumps(sidecar, indent=2))
     logger.info("Threshold global (p99 healthy train): %.4f  → %s", thr_global, threshold_path)
 
     np.save(_RESULTS / "X_test.npy", X_test)
     np.save(_RESULTS / "y_test.npy", y_test)
+    # Save healthy training rows so compare.py uses the same temporal split
+    # as IForest (avoids leakage between IForest's test set and the other
+    # models' training data).
+    np.save(_RESULTS / "X_train_healthy.npy", X_healthy)
     logger.info("Test split saved → %s", _RESULTS)
 
     meta_cols = [c for c in df.columns if c.startswith("_meta_")]
