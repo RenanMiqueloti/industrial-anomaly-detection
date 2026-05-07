@@ -60,12 +60,12 @@ def test_extract_all_returns_expected_keys() -> None:
 
 
 def test_band_energy_concentrates_in_correct_band() -> None:
-    """A 1 kHz sine puts almost all its energy in the 500–1500 Hz band."""
-    fs = 12_000
+    """A 1 kHz sine puts almost all its energy in the 500–2000 Hz band (IMS bands)."""
+    fs = 20_000
     x = _sine(amp=1.0, freq=1000.0, fs=fs, duration=1.0)
     energies = fft_band_energy(x, fs=fs, bands=DEFAULT_BANDS)
-    target = energies["band_500_1500"]
-    others = sum(v for k, v in energies.items() if k != "band_500_1500")
+    target = energies["band_500_2000"]
+    others = sum(v for k, v in energies.items() if k != "band_500_2000")
     assert target > 10 * max(others, 1e-12)
 
 
@@ -87,4 +87,4 @@ def test_extract_all_accepts_custom_bands() -> None:
     assert "band_0_100" in feats
     assert "band_100_500" in feats
     # Default bands should NOT be present when an override is provided.
-    assert "band_500_1500" not in feats
+    assert "band_500_2000" not in feats

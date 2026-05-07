@@ -36,7 +36,7 @@ _THRESHOLD_PATH = Path("results/threshold.json")
 
 class ScoreRequest(BaseModel):
     signal: list[float] = Field(..., min_length=512, description="1-D vibration window")
-    fs: int = Field(12_000, gt=0, description="Sampling rate in Hz")
+    fs: int = Field(20_000, gt=0, description="Sampling rate in Hz")
 
 
 class ScoreResponse(BaseModel):
@@ -53,10 +53,11 @@ def _load_threshold() -> float:
             return float(data["iforest"])
         except (KeyError, ValueError, json.JSONDecodeError):
             warnings.warn(
-                f"Could not read threshold from {_THRESHOLD_PATH}; defaulting to 0.0",
+                f"Could not read threshold from {_THRESHOLD_PATH}; defaulting to inf (nothing flagged)",
                 stacklevel=2,
             )
-    return 0.0
+    # inf means no window is flagged until a real threshold is configured via threshold.json
+    return float("inf")
 
 
 def _score_signal(model: IForestDetector, signal: list[float], fs: int) -> float:
@@ -84,8 +85,8 @@ app = FastAPI(
 
 
 @app.get("/health")
-def health(request: Any = None) -> dict[str, Any]:
-    threshold = getattr(app.state, "threshold", 0.0)
+def health() -> dict[str, Any]:
+    threshold = getattr(app.state, "threshold", float("inf"))
     return {"status": "ok", "model": "iforest", "threshold": threshold}
 
 
@@ -106,7 +107,7 @@ async def stream(ws: WebSocket) -> None:
         while True:
             msg = await ws.receive_json()
             signal: list[float] = msg["signal"]
-            fs: int = int(msg.get("fs", 12_000))
+            fs: int = int(msg.get("fs", 20_000))
             s = _score_signal(model, signal, fs)
             await ws.send_json({"score": s, "is_anomaly": s >= threshold})
     except WebSocketDisconnect:
