@@ -96,6 +96,8 @@ make download
 
 Baixa o [IMS/NASA Bearing Dataset](https://www.kaggle.com/datasets/vinayak123tyagi/bearing-dataset) (Run 2) via Kaggle CLI.
 
+> **Sem Kaggle?** Rode `make demo` no lugar de `make download` — gera um conjunto sintético compacto (60 snapshots, 4 rolamentos) com a mesma estrutura do IMS Run 2, suficiente pra validar o pipeline ponta a ponta. Não substitui o dataset real para análise de resultados.
+
 ```
 Downloading bearing-dataset.zip to data/raw
 100%|████████████████| 680M/680M [02:14<00:00, 5.11MB/s]
@@ -277,3 +279,10 @@ make dashboard
 ```
 
 Todas as sementes aleatórias são fixas (`random_state=42`). Os resultados foram gerados a partir de um clone limpo sem nenhuma etapa manual além da configuração do `kaggle.json`.
+
+---
+
+## Documentação adicional
+
+- **[Model Card](docs/MODEL_CARD.md)** — uso pretendido, métricas com IC, limitações conhecidas, considerações éticas.
+- **[Dataset Datasheet](docs/DATASET.md)** — composição do IMS/NASA Run 2, processo de coleta, splits recomendados, licença.
