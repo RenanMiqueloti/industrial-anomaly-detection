@@ -8,7 +8,7 @@ Reference
 ---------
 Lee, J., Qiu, H., Yu, G., & Lin, J. (2007). Bearing Data Set.
 IMS, University of Cincinnati. NASA Prognostics Data Repository.
-https://data.nasa.gov/dataset/IMS-University-of-Cincinnati-Bearing-Dataset/3yud-nd96
+Mirror used by ``make download``: https://www.kaggle.com/datasets/vinayak123tyagi/bearing-dataset
 
 Dataset layout
 --------------
