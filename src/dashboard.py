@@ -1325,7 +1325,7 @@ def main() -> None:
         diag_col, sep_col = st.columns([2, 3])
 
         with diag_col:
-            st.subheader("🤖 Auto-diagnóstico")
+            st.subheader("Auto-diagnóstico")
             _render_auto_diagnosis(
                 scores=scores,
                 timestamps=timestamps,
