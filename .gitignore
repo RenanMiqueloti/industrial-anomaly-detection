@@ -29,7 +29,6 @@ data/features/*
 
 results/*
 !results/iforest_model.joblib
-!results/lof_model.joblib
 !results/ocsvm_model.joblib
 !results/ae_model.joblib
 !results/X_test.npy

@@ -1,4 +1,4 @@
-"""4-model comparison: IForest, OC-SVM, LOF, AutoEncoder.
+"""3-model comparison: IForest, OC-SVM, AutoEncoder.
 
 Trains each model on healthy windows, evaluates on the held-out test set,
 and returns a summary DataFrame with bootstrap CI metrics.
@@ -16,7 +16,6 @@ import pandas as pd
 from src.evaluate import bootstrap_ci, plot_comparison
 from src.models.autoencoder import AutoEncoderDetector
 from src.models.iforest import IForestDetector
-from src.models.lof import LOFDetector
 from src.models.ocsvm import OCSVMDetector
 
 # Default artifact directory; overridable via IAD_RESULTS_DIR for deployments
@@ -26,7 +25,6 @@ _RESULTS_DIR = Path(os.getenv("IAD_RESULTS_DIR", "results"))
 _MODELS = {
     "IsolationForest": IForestDetector,
     "OC-SVM": OCSVMDetector,
-    "LOF": LOFDetector,
     "AutoEncoder": AutoEncoderDetector,
 }
 
@@ -37,10 +35,10 @@ def run_comparison(
     X_train_path: Path | None = None,
     out_dir: Path | None = None,
 ) -> pd.DataFrame:
-    """Train all 4 detectors on healthy windows, evaluate with bootstrap CI.
+    """Train all 3 detectors on healthy windows, evaluate with bootstrap CI.
 
-    Uses the same temporal split produced by ``make train`` so all four models
-    train on identical healthy windows and score the same held-out test set —
+    Uses the same temporal split produced by ``make train`` so every model
+    trains on identical healthy windows and scores the same held-out test set —
     critical for a fair comparison.
 
     Parameters
@@ -83,7 +81,6 @@ def run_comparison(
     _MODEL_SAVE_NAMES = {
         "IsolationForest": "iforest_model.joblib",
         "OC-SVM": "ocsvm_model.joblib",
-        "LOF": "lof_model.joblib",
         "AutoEncoder": "ae_model.joblib",
     }
 

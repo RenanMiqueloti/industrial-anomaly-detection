@@ -40,7 +40,6 @@ from sklearn.metrics import roc_auc_score
 from src.explain import explain
 from src.models.autoencoder import AutoEncoderDetector
 from src.models.iforest import IForestDetector
-from src.models.lof import LOFDetector
 from src.models.ocsvm import OCSVMDetector
 
 logger = logging.getLogger(__name__)
@@ -55,22 +54,19 @@ _THRESHOLD_JSON = _RESULTS / "threshold.json"
 _MODEL_THRESHOLD_KEY = {
     "IsolationForest": "iforest",
     "OC-SVM": "ocsvm",
-    "LOF": "lof",
     "AutoEncoder": "ae",
 }
 _MODEL_FILES = {
     "IsolationForest": _RESULTS / "iforest_model.joblib",
     "OC-SVM": _RESULTS / "ocsvm_model.joblib",
-    "LOF": _RESULTS / "lof_model.joblib",
     "AutoEncoder": _RESULTS / "ae_model.joblib",
 }
 _MODEL_CLASSES = {
     "IsolationForest": IForestDetector,
     "OC-SVM": OCSVMDetector,
-    "LOF": LOFDetector,
     "AutoEncoder": AutoEncoderDetector,
 }
-_SLOW_MODELS = {"OC-SVM", "LOF", "AutoEncoder"}
+_SLOW_MODELS = {"OC-SVM", "AutoEncoder"}
 
 _FEATURE_LABELS: dict[str, str] = {
     "rms": "RMS",
