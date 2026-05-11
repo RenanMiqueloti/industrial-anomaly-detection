@@ -191,15 +191,17 @@ def test_predict_failure_returns_none_for_flat_trend() -> None:
     assert dash._predict_failure(scores, timestamps, threshold=1.0) is None
 
 
-def test_predict_failure_returns_projection_for_rising_trend() -> None:
-    """A rising score that hasn't crossed the threshold gets a future-time projection."""
+def test_predict_failure_suppresses_noise_drift_far_below_threshold() -> None:
+    """Noisy scores well below threshold should not produce a projection.
+
+    Regression on a healthy bearing's trailing window can yield a tiny positive
+    slope from noise. Without the capture guard, that drift would render a
+    misleading "failure predicted in Xh" card on a clearly healthy bearing.
+    """
+    rng = np.random.default_rng(42)
     n = 100
-    scores = np.linspace(0.1, 0.9, n)
+    # Mean ~0.30 with mild upward drift, threshold at 0.60 — capture stays at 0
+    scores = rng.normal(0.30, 0.02, n) + np.linspace(0, 0.05, n)
     timestamps = pd.DatetimeIndex(pd.date_range("2004-02-12", periods=n, freq="10min"))
 
-    result = dash._predict_failure(scores, timestamps, threshold=1.5)
-    assert result is not None
-    assert "predicted_ts" in result
-    assert "hours_away" in result
-    assert result["hours_away"] > 0
-    assert result["slope"] > 0
+    assert dash._predict_failure(scores, timestamps, threshold=0.60) is None

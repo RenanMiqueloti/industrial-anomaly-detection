@@ -267,6 +267,21 @@ def _predict_failure(
     if slope <= 1e-10:
         return None
 
+    # Suppress projections on bearings that are not actually degrading:
+    #   1. recent capture must be substantive (≥20% of the trend window above
+    #      threshold), otherwise the slope is fitting noise drift
+    #   2. the regression must explain real variance (R² ≥ 0.3)
+    # Without these, any tiny positive slope on a clearly healthy bearing
+    # produces a misleading "failure predicted in Xh" card.
+    if float(np.mean(y >= threshold)) < 0.20:
+        return None
+
+    ss_res = float(np.sum((y - (slope * x + intercept)) ** 2))
+    ss_tot = float(np.sum((y - np.mean(y)) ** 2))
+    r2 = 1.0 - ss_res / ss_tot if ss_tot > 1e-12 else 0.0
+    if r2 < 0.3:
+        return None
+
     t_cross_rel = (threshold - intercept) / slope
     if t_cross_rel <= n_trend:
         return None
@@ -975,10 +990,17 @@ def _kpi_row(
                 unsafe_allow_html=True,
             )
         elif excess_pct >= 20:
+            detected_line = ""
+            above_idx = np.flatnonzero(scores >= threshold)
+            if len(above_idx) > 0 and len(timestamps) == len(scores):
+                first_ts = timestamps[int(above_idx[0])]
+                hours_since = (timestamps[-1] - first_ts).total_seconds() / 3600
+                detected_line = f"<p>Detectado há <b>{hours_since:.0f}h</b></p>"
             st.markdown(
                 '<div class="fail-card">'
                 "<h2>🔴 Falha em progressão</h2>"
-                f"<p>Score máx. <b>{max_score:.4f}</b> — {excess_pct:+.0f}% acima do limite</p>"
+                + detected_line
+                + f"<p>Score máx. <b>{max_score:.4f}</b> — {excess_pct:+.0f}% acima do limite</p>"
                 f"<p>Score selecionado: {scores[selected_idx]:.4f}</p>"
                 f"<p style='font-size:0.8rem;color:#aaa;'>Limite: {threshold:.4f}</p>"
                 "</div>",
