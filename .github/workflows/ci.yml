@@ -50,7 +50,10 @@ jobs:
       - run: pip install -e ".[dev,api]"
       - run: pip install pip-audit
       # --skip-editable: don't try to audit our own package (not on PyPI).
-      - run: pip-audit --strict --progress-spinner=off --skip-editable
+      # --strict was dropped: with the editable install present, pip-audit
+      # emits a warning that --strict promotes to a hard failure even when
+      # no advisory was actually found. Real advisories still exit non-zero.
+      - run: pip-audit --progress-spinner=off --skip-editable
 
   test:
     name: test (pytest, ${{ matrix.python-version }})

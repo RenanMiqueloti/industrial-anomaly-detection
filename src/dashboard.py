@@ -39,6 +39,7 @@ from sklearn.metrics import roc_auc_score
 
 from src.explain import explain
 from src.models.autoencoder import AutoEncoderDetector
+from src.models.base import BaseDetector
 from src.models.iforest import IForestDetector
 from src.models.ocsvm import OCSVMDetector
 
@@ -61,7 +62,7 @@ _MODEL_FILES = {
     "OC-SVM": _RESULTS / "ocsvm_model.joblib",
     "AutoEncoder": _RESULTS / "ae_model.joblib",
 }
-_MODEL_CLASSES = {
+_MODEL_CLASSES: dict[str, type[BaseDetector]] = {
     "IsolationForest": IForestDetector,
     "OC-SVM": OCSVMDetector,
     "AutoEncoder": AutoEncoderDetector,
@@ -898,10 +899,9 @@ def _hero(
             unsafe_allow_html=True,
         )
     else:
-        has_ts = timestamps is not None and len(timestamps) == len(scores)
         first_idx = int(np.argmax(above))
 
-        if bearing_id == 1 and has_ts:
+        if bearing_id == 1 and timestamps is not None and len(timestamps) == len(scores):
             first_ts_str = timestamps[first_idx].strftime("%d/%m/%Y às %H:%M")
             hours_early = (timestamps[-1] - timestamps[first_idx]).total_seconds() / 3600
             detail = (
@@ -1426,8 +1426,10 @@ def main() -> None:
         timeline_fig, use_container_width=True, on_select="rerun", key="timeline"
     )
 
-    if event and event.selection and event.selection.points:
-        pt = event.selection.points[0]
+    # Streamlit's PlotlyState type stub does not yet expose `.selection`; the
+    # attribute exists at runtime when `on_select="rerun"` is configured above.
+    if event and event.selection and event.selection.points:  # type: ignore[attr-defined]
+        pt = event.selection.points[0]  # type: ignore[attr-defined]
         raw_cd = pt.get("customdata")
         if raw_cd is not None:
             new_idx = int(raw_cd[0] if isinstance(raw_cd, (list, tuple)) else raw_cd)
