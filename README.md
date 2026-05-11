@@ -9,7 +9,7 @@
 Modelos treinados **exclusivamente em dados saudáveis** — sem nenhum rótulo de falha — capazes de detectar degradação de rolamentos horas antes do colapso, com limiar calibrado por rolamento (≤ 1% de falsos alarmes por design).
 
 > **Resultado principal — Bearing 1 (IMS/NASA Run 2):**
-> AUC = **0.8705** (dataset completo) · Primeira detecção **47 horas antes** do fim do período monitorado · limiar calibrado a ≤ 1% de falsos alarmes por rolamento.
+> AUC = **0.8705** (dataset completo) · TP = **71.7%** no período rotulado como degradado · FP = **1.0%** no período saudável de calibração · limiar = p99 dos scores saudáveis de cada rolamento.
 
 ---
 
@@ -25,7 +25,7 @@ As 11 features extraídas (7 domínio do tempo + 4 bandas espectrais) capturam e
 
 ## Score de anomalia ao longo do tempo
 
-O modelo sinaliza o início da degradação do Bearing 1 em **17/02/2004 às 05:12**, com 47 horas de antecedência. A regressão linear nos últimos 25% dos snapshots mostra a tendência crescente.
+No test split (30% finais dos snapshots, cobrindo as últimas ~47h do run), o score do Bearing 1 fica acima do limiar de forma sustentada — todos os snapshots do test cruzam, dando 47h de lead time até a falha real. A regressão linear nos últimos 25% dos snapshots mostra a tendência crescente.
 
 ![Timeline do Bearing 1 — score de anomalia com 1ª detecção anotada](docs/assets/b1_timeline.png)
 
