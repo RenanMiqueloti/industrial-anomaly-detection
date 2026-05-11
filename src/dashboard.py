@@ -19,7 +19,12 @@ from __future__ import annotations
 
 import json
 import logging
+import sys
 from pathlib import Path
+
+# Permite rodar via `streamlit run src/dashboard.py` sem o pacote estar
+# instalado — Streamlit Cloud não roda `pip install -e .` por padrão.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import matplotlib
 
