@@ -38,7 +38,7 @@ def test_run_comparison_synthetic(tmp_path) -> None:
 
     # Shape: exactly 4 models
     assert isinstance(results, pd.DataFrame)
-    assert len(results) == 4
+    assert len(results) == 3
 
     expected_cols = {
         "model",
@@ -52,8 +52,8 @@ def test_run_comparison_synthetic(tmp_path) -> None:
     }
     assert expected_cols.issubset(results.columns)
 
-    # All 4 models present
-    assert set(results["model"]) == {"IsolationForest", "OC-SVM", "LOF", "AutoEncoder"}
+    # All 3 models present
+    assert set(results["model"]) == {"IsolationForest", "OC-SVM", "AutoEncoder"}
 
     # Parquet and figure saved
     assert (tmp_path / "comparison.parquet").exists()
@@ -62,7 +62,6 @@ def test_run_comparison_synthetic(tmp_path) -> None:
     # Individual model files saved (required by the dashboard)
     assert (tmp_path / "iforest_model.joblib").exists()
     assert (tmp_path / "ocsvm_model.joblib").exists()
-    assert (tmp_path / "lof_model.joblib").exists()
     assert (tmp_path / "ae_model.joblib").exists()
 
     # CI bounds are sane

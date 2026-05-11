@@ -50,9 +50,11 @@ A capacidade do modelo de separar janelas saudáveis de degradadas varia por rol
 
 ## Comparação de modelos
 
-Quatro detectores de anomalia não supervisionados, treinados nos mesmos dados saudáveis e avaliados com intervalos de confiança bootstrap (1.000 reamostras):
+Três detectores de anomalia não supervisionados, treinados nos mesmos dados saudáveis e avaliados com intervalos de confiança bootstrap (1.000 reamostras):
 
 ![Comparação de modelos — ROC-AUC e F1 com IC bootstrap](docs/assets/model_comparison.png)
+
+> A figura inclui um quarto modelo (LOF) que foi removido depois do benchmark. LOF é density-based e assume anomalia como ponto isolado em região esparsa — degradação de rolamento é drift gradual, não outlier pontual. A figura será regenerada na próxima rodada de `make compare`.
 
 ---
 
@@ -65,7 +67,7 @@ Quatro detectores de anomalia não supervisionados, treinados nos mesmos dados s
 | 1 · Download (Kaggle) | `make download` | `data/raw/2nd_test/` (984 arquivos, ~680 MB) |
 | 2–3 · Features | `make features` | `data/features/features.parquet` (3.936 × 11) |
 | 4 · Treino + limiares | `make train` | `results/iforest_model.joblib` + `threshold.json` |
-| 5 · Benchmark 4 modelos | `make compare` | `results/comparison.parquet` + gráfico |
+| 5 · Benchmark 3 modelos | `make compare` | `results/comparison.parquet` + gráfico |
 | 6 · Dashboard | `make dashboard` | Streamlit em `http://localhost:8502` |
 
 ---
@@ -134,13 +136,13 @@ INFO Threshold bearing 3 (p99 healthy): 0.6604
 INFO Threshold bearing 4 (p99 healthy): 0.5630
 ```
 
-### 6. Benchmark dos 4 modelos
+### 6. Benchmark dos 3 modelos
 
 ```bash
 make compare
 ```
 
-Treina, avalia e salva os 4 detectores. IC bootstrap com 1.000 reamostras.
+Treina, avalia e salva os 3 detectores. IC bootstrap com 1.000 reamostras.
 
 ### 7. Dashboard interativo
 
@@ -169,14 +171,13 @@ industrial-anomaly-detection/
 │   ├── dataset.py         # build_ims_features → parquet com metadados
 │   ├── features.py        # time-domain (7) + spectral bands (4) @ 20 kHz
 │   ├── evaluate.py        # bootstrap_ci, plot_roc, plot_comparison
-│   ├── compare.py         # benchmark 4 modelos + salva joblibs
+│   ├── compare.py         # benchmark 3 modelos + salva joblibs
 │   ├── explain.py         # SHAP (TreeExplainer / KernelExplainer)
 │   ├── cli.py             # download | features | train | eval | compare | explain
 │   ├── dashboard.py       # Streamlit dashboard v2
 │   └── models/
 │       ├── iforest.py     # IForestDetector
 │       ├── ocsvm.py       # OCSVMDetector
-│       ├── lof.py         # LOFDetector
 │       └── autoencoder.py # AutoEncoderDetector (PyTorch, early stopping)
 ├── tests/                 # 75+ testes (pytest + fixtures sintéticas)
 ├── docs/assets/           # figuras versionadas no repo
@@ -245,7 +246,6 @@ feats = extract_all(window, fs=20_000)  # → dict[str, float], 11 chaves
 |---|---|---|
 | **IsolationForest** | Robusto em alta dimensão, rápido, TreeExplainer exato | Cortes axis-aligned perdem interações |
 | **One-Class SVM** | Fronteiras não-lineares (kernel RBF) | Sensível a hiperparâmetros; quadrático em n |
-| **LOF** | Densidade local — captura clusters de anomalia | Requer `novelty=True` para inferência em novos dados |
 | **AutoEncoder** | Erro de reconstrução codifica normalidade complexa | Pode overfitar com poucos dados saudáveis |
 
 Todos treinados **sem rótulos de falha** e avaliados no mesmo conjunto de teste temporal.

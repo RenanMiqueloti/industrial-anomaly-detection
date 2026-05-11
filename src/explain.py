@@ -1,4 +1,4 @@
-"""SHAP explanations for the 4 anomaly detectors.
+"""SHAP explanations for the 3 anomaly detectors.
 
 Public API
 ----------
@@ -7,10 +7,9 @@ Public API
 
 Dispatch logic
 --------------
-    IForestDetector  → TreeExplainer  (exact, O(TLD²), fast)
-    OCSVMDetector
-    LOFDetector       → KernelExplainer  (model-agnostic, slower)
-    AutoEncoderDetector
+    IForestDetector     → TreeExplainer  (exact, O(TLD²), fast)
+    OCSVMDetector       → KernelExplainer  (model-agnostic, slower)
+    AutoEncoderDetector → KernelExplainer
 
 For KernelExplainer, ``X_background`` controls the reference distribution.
 ``bg_size`` and ``eval_size`` cap the computation; defaults fit a single-core
@@ -31,7 +30,6 @@ import matplotlib.pyplot as plt
 from src.models.autoencoder import AutoEncoderDetector
 from src.models.base import BaseDetector
 from src.models.iforest import IForestDetector
-from src.models.lof import LOFDetector
 from src.models.ocsvm import OCSVMDetector
 
 DEFAULT_BG_SIZE: int = 50
@@ -78,12 +76,12 @@ def explain(
     Raises
     ------
     ValueError
-        If ``model`` is not one of the four supported detector types.
+        If ``model`` is not one of the three supported detector types.
     """
-    if not isinstance(model, (IForestDetector, OCSVMDetector, LOFDetector, AutoEncoderDetector)):
+    if not isinstance(model, (IForestDetector, OCSVMDetector, AutoEncoderDetector)):
         raise ValueError(
             f"Unsupported model type '{type(model).__name__}'. "
-            "Expected one of: IForestDetector, OCSVMDetector, LOFDetector, AutoEncoderDetector."
+            "Expected one of: IForestDetector, OCSVMDetector, AutoEncoderDetector."
         )
 
     # Deterministic subsample of eval rows
@@ -130,7 +128,7 @@ def _explain_kernel(
     bg_size: int,
     random_state: int,
 ) -> shap.Explanation:
-    """KernelExplainer path — model-agnostic SHAP for OC-SVM, LOF, AE."""
+    """KernelExplainer path — model-agnostic SHAP for OC-SVM, AE."""
     if X_background is None:
         X_background = X_eval  # fallback; caller should prefer training healthy set
 

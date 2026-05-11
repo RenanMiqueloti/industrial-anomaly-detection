@@ -12,7 +12,7 @@
 | Nome | `IForestDetector` (modelo principal) |
 | Versão | 0.1.0 |
 | Algoritmo base | `sklearn.ensemble.IsolationForest` (n_estimators=100, contamination='auto') |
-| Modelos comparados | `OCSVMDetector`, `LOFDetector`, `AutoEncoderDetector` (PyTorch) |
+| Modelos comparados | `OCSVMDetector`, `AutoEncoderDetector` (PyTorch) |
 | Tipo de aprendizado | Não supervisionado (treinamento exclusivamente em janelas saudáveis) |
 | Entradas | Vetor de 11 features extraídas de janela de vibração (1 segundo @ 20 kHz) |
 | Saída | Score de anomalia ∈ ℝ; flag binário `score > threshold[bearing]` |
@@ -99,7 +99,7 @@ Pontos críticos:
 - **Conjunto de teste**: últimos 30% dos snapshots (cutoff: 2004-02-16 16:52).
 - **Métrica primária**: ROC-AUC com IC bootstrap (95%, 1.000 reamostras).
 - **Métricas secundárias**: F1, precisão, recall, taxa de falsos alarmes.
-- **Comparação**: IsolationForest, One-Class SVM (kernel RBF), LOF (`novelty=True`), AutoEncoder denso (PyTorch, early stopping em validação).
+- **Comparação**: IsolationForest, One-Class SVM (kernel RBF), AutoEncoder denso (PyTorch, early stopping em validação).
 - **Reprodutibilidade**: `random_state=42` em todos os modelos. Pipeline completo verificável via `make install download features train compare`.
 
 ### Drift detection
