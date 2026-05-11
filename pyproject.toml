@@ -68,6 +68,11 @@ where = ["."]
 include = ["src*"]
 exclude = ["tests*", "data*", "results*"]
 
+# Streamlit Cloud usa Poetry quando há pyproject.toml — esta seção
+# diz a Poetry onde estão os módulos (espelha o setuptools find acima).
+[tool.poetry]
+packages = [{ include = "src" }]
+
 [tool.ruff]
 line-length = 100
 target-version = "py312"
