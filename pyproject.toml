@@ -36,7 +36,7 @@ dependencies = [
   "streamlit>=1.36",
   "plotly>=5.22",
   "pyarrow>=16",
-  "tqdm>=4.66",
+  "tqdm>=4.67.3",
 ]
 
 [project.optional-dependencies]
