@@ -47,10 +47,14 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-      - run: pip install -e ".[dev,api]"
       - run: pip install pip-audit
-      # --skip-editable: don't try to audit our own package (not on PyPI).
-      - run: pip-audit --strict --progress-spinner=off --skip-editable
+      # Audit the runtime requirements file directly. Auditing an editable
+      # install of this package errors out on '--strict' even with
+      # '--skip-editable'; scanning requirements.txt is what we actually care
+      # about anyway — that's what gets installed on Streamlit Cloud and in
+      # the Docker image. torch's CPU wheel (torch==2.x.y+cpu, pulled from
+      # pytorch.org) is reported as "skipped — not on PyPI" and logged.
+      - run: pip-audit -r requirements.txt --progress-spinner=off
 
   test:
     name: test (pytest, ${{ matrix.python-version }})

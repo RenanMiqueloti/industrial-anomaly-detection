@@ -989,6 +989,7 @@ def _hero(
         )
     elif state == _STATE_FAILURE:
         if above.any() and has_ts:
+            assert timestamps is not None
             first_idx = int(np.argmax(above))
             first_ts_str = timestamps[first_idx].strftime("%d/%m/%Y às %H:%M")
             hours_early = (timestamps[-1] - timestamps[first_idx]).total_seconds() / 3600
@@ -1659,8 +1660,10 @@ def main() -> None:
         timeline_fig, use_container_width=True, on_select="rerun", key="timeline"
     )
 
-    if event and event.selection and event.selection.points:
-        pt = event.selection.points[0]
+    # Streamlit's PlotlyState stubs don't expose `.selection` even though the
+    # runtime object carries it when `on_select="rerun"` is set.
+    if event and event.selection and event.selection.points:  # type: ignore[attr-defined]
+        pt = event.selection.points[0]  # type: ignore[attr-defined]
         raw_cd = pt.get("customdata")
         if raw_cd is not None:
             new_idx = int(raw_cd[0] if isinstance(raw_cd, (list, tuple)) else raw_cd)
