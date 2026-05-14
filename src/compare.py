@@ -17,6 +17,7 @@ import pandas as pd
 
 from src.evaluate import bootstrap_ci, plot_comparison
 from src.models.autoencoder import AutoEncoderDetector
+from src.models.base import BaseDetector
 from src.models.iforest import IForestDetector
 from src.models.ocsvm import OCSVMDetector
 
@@ -102,7 +103,7 @@ def run_comparison(
     bid_train_healthy = np.load(bid_path) if bid_path.exists() else None
 
     rows = []
-    fitted_models: dict[str, object] = {}
+    fitted_models: dict[str, BaseDetector] = {}
     for name, ModelCls in _MODELS.items():
         model = ModelCls()
         t0 = time.perf_counter()
@@ -145,7 +146,7 @@ def run_comparison(
 
 def _persist_per_bearing_thresholds(
     threshold_path: Path,
-    fitted_models: dict[str, object],
+    fitted_models: dict[str, BaseDetector],
     X_healthy: np.ndarray,
     bid_train_healthy: np.ndarray,
     min_samples_per_bearing: int = 5,
