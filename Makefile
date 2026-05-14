@@ -1,4 +1,4 @@
-.PHONY: install download demo features train eval compare explain dashboard api api-prod drift test lint typecheck format clean help
+.PHONY: install download demo features train eval compare explain precompute-scores dashboard api api-prod drift test lint typecheck format clean help
 
 PYTHON ?= python3
 
@@ -12,6 +12,7 @@ help:
 	@echo "  train       fit unsupervised models on the feature matrix"
 	@echo "  eval        compute metrics with bootstrap CI on a held-out set"
 	@echo "  explain     generate SHAP plots for predicted anomalies"
+	@echo "  precompute-scores  score full feature parquet with each trained model"
 	@echo "  dashboard   launch the Streamlit dashboard locally"
 	@echo "  api         launch FastAPI dev server at http://localhost:8000"
 	@echo "  api-prod    launch FastAPI production server (no --reload)"
@@ -45,6 +46,9 @@ compare:
 
 explain:
 	$(PYTHON) -m src.cli explain
+
+precompute-scores:
+	$(PYTHON) -m src.cli precompute-scores
 
 dashboard:
 	streamlit run src/dashboard.py
