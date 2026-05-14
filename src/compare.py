@@ -6,6 +6,8 @@ and returns a summary DataFrame with bootstrap CI metrics.
 
 from __future__ import annotations
 
+import json
+import logging
 import os
 import time
 from pathlib import Path
@@ -18,6 +20,8 @@ from src.models.autoencoder import AutoEncoderDetector
 from src.models.iforest import IForestDetector
 from src.models.ocsvm import OCSVMDetector
 
+logger = logging.getLogger(__name__)
+
 # Default artifact directory; overridable via IAD_RESULTS_DIR for deployments
 # that mount results elsewhere (e.g. /var/lib/iad/results).
 _RESULTS_DIR = Path(os.getenv("IAD_RESULTS_DIR", "results"))
@@ -26,6 +30,12 @@ _MODELS = {
     "IsolationForest": IForestDetector,
     "OC-SVM": OCSVMDetector,
     "AutoEncoder": AutoEncoderDetector,
+}
+
+_MODEL_THRESHOLD_KEY = {
+    "IsolationForest": "iforest",
+    "OC-SVM": "ocsvm",
+    "AutoEncoder": "ae",
 }
 
 
@@ -84,7 +94,15 @@ def run_comparison(
         "AutoEncoder": "ae_model.joblib",
     }
 
+    # Per-bearing healthy-set bearing IDs — written by `cli train`. When
+    # present we compute per-bearing p99 thresholds for each model, matching
+    # what IForest already gets and avoiding silent fallback to test-set p99
+    # in the dashboard.
+    bid_path = out_dir / "bid_train_healthy.npy"
+    bid_train_healthy = np.load(bid_path) if bid_path.exists() else None
+
     rows = []
+    fitted_models: dict[str, object] = {}
     for name, ModelCls in _MODELS.items():
         model = ModelCls()
         t0 = time.perf_counter()
@@ -92,6 +110,7 @@ def run_comparison(
         train_s = time.perf_counter() - t0
 
         model.save(out_dir / _MODEL_SAVE_NAMES[name])
+        fitted_models[name] = model
 
         scores = model.score(X_test)
         ci = bootstrap_ci(y_test, scores)
@@ -109,6 +128,11 @@ def run_comparison(
             }
         )
 
+    if bid_train_healthy is not None:
+        _persist_per_bearing_thresholds(
+            out_dir / "threshold.json", fitted_models, X_healthy, bid_train_healthy
+        )
+
     results = pd.DataFrame(rows)
     out_parquet = out_dir / "comparison.parquet"
     results.to_parquet(out_parquet, index=False)
@@ -117,3 +141,37 @@ def run_comparison(
     plot_comparison(results, fig_path)
 
     return results
+
+
+def _persist_per_bearing_thresholds(
+    threshold_path: Path,
+    fitted_models: dict[str, object],
+    X_healthy: np.ndarray,
+    bid_train_healthy: np.ndarray,
+    min_samples_per_bearing: int = 5,
+) -> None:
+    """Compute per-bearing p99 thresholds for each fitted model and merge into
+    the shared ``threshold.json``.
+
+    Keeps existing keys (e.g. ``iforest_b1`` already written by ``cli train``)
+    and adds ``ocsvm_bN`` / ``ae_bN`` so the dashboard's per-bearing slider
+    works the same for every model.
+    """
+    data = json.loads(threshold_path.read_text()) if threshold_path.exists() else {}
+
+    bearing_ids = sorted({int(b) for b in np.unique(bid_train_healthy)})
+    for name, model in fitted_models.items():
+        key = _MODEL_THRESHOLD_KEY.get(name, name.lower())
+        # Global p99 (legacy flat key) for back-compat with anything that read
+        # the JSON before per-bearing keys existed.
+        global_score = model.score(X_healthy)
+        data[key] = float(np.percentile(global_score, 99))
+        for bid in bearing_ids:
+            mask = bid_train_healthy == bid
+            if int(mask.sum()) < min_samples_per_bearing:
+                continue
+            thr_bid = float(np.percentile(model.score(X_healthy[mask]), 99))
+            data[f"{key}_b{bid}"] = thr_bid
+            logger.info("Threshold %s bearing %d: %.6f", name, bid, thr_bid)
+
+    threshold_path.write_text(json.dumps(data, indent=2))
