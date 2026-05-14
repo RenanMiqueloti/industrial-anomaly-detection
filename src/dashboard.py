@@ -37,12 +37,12 @@ import plotly.graph_objects as go
 import streamlit as st
 from sklearn.metrics import roc_auc_score
 
-from src.explain import explain
-from src.models.autoencoder import AutoEncoderDetector
-from src.models.iforest import IForestDetector
-from src.models.ocsvm import OCSVMDetector
-
 logger = logging.getLogger(__name__)
+
+# torch (via AutoEncoderDetector) and shap (via src.explain) are imported
+# lazily inside _get_model_class() and the SHAP button callback — the default
+# IsolationForest flow never needs either, and skipping those imports cuts
+# several seconds off the cold start on Streamlit Cloud's shared CPU.
 
 # ---------------------------------------------------------------------------
 # Paths
@@ -61,12 +61,24 @@ _MODEL_FILES = {
     "OC-SVM": _RESULTS / "ocsvm_model.joblib",
     "AutoEncoder": _RESULTS / "ae_model.joblib",
 }
-_MODEL_CLASSES = {
-    "IsolationForest": IForestDetector,
-    "OC-SVM": OCSVMDetector,
-    "AutoEncoder": AutoEncoderDetector,
-}
 _SLOW_MODELS = {"OC-SVM", "AutoEncoder"}
+
+
+def _get_model_class(model_name: str):
+    if model_name == "IsolationForest":
+        from src.models.iforest import IForestDetector
+
+        return IForestDetector
+    if model_name == "OC-SVM":
+        from src.models.ocsvm import OCSVMDetector
+
+        return OCSVMDetector
+    if model_name == "AutoEncoder":
+        from src.models.autoencoder import AutoEncoderDetector
+
+        return AutoEncoderDetector
+    raise KeyError(model_name)
+
 
 _FEATURE_LABELS: dict[str, str] = {
     "rms": "RMS",
@@ -164,7 +176,7 @@ def load_model(model_name: str):
     path = _MODEL_FILES.get(model_name)
     if path is None or not path.exists():
         return None
-    return _MODEL_CLASSES[model_name].load(path)
+    return _get_model_class(model_name).load(path)
 
 
 @st.cache_data
@@ -1183,6 +1195,8 @@ def _shap_expander(
                 try:
                     import shap as _shap
 
+                    from src.explain import explain
+
                     exp = explain(
                         model,
                         X_test[[sel]],
@@ -1240,7 +1254,7 @@ def main() -> None:
     # --- Sidebar ---
     with st.sidebar:
         st.header("Configurações")
-        model_name = st.selectbox("Modelo", list(_MODEL_CLASSES.keys()), index=0)
+        model_name = st.selectbox("Modelo", list(_MODEL_FILES.keys()), index=0)
 
         if "_meta_bearing_id" in meta_test.columns:
             available_bearings = sorted(meta_test["_meta_bearing_id"].unique().tolist())
