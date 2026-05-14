@@ -118,6 +118,12 @@ st.markdown(
                    padding:12px 20px; text-align:center; font-size:1.1rem; font-weight:700; }
     .status-warn { background:#7d1a1a; color:#fff; border-radius:8px;
                    padding:12px 20px; text-align:center; font-size:1.1rem; font-weight:700; }
+    .status-recurrent { background:#7a5a1a; color:#fff; border-radius:8px;
+                   padding:12px 20px; text-align:center; font-size:1.1rem; font-weight:700; }
+    .recur-card  { background:#1e1e1e; border:2px solid #e67e22; border-radius:10px;
+                   padding:16px; text-align:center; }
+    .recur-card h2 { color:#e67e22; margin:0 0 4px 0; font-size:1.4rem; }
+    .recur-card p  { color:#ccc; margin:2px 0; font-size:0.9rem; }
     .pred-card   { background:#1e1e1e; border:2px solid #e67e22; border-radius:10px;
                    padding:16px; text-align:center; }
     .pred-card h2 { color:#e67e22; margin:0 0 4px 0; font-size:1.4rem; }
@@ -324,6 +330,46 @@ def _safe_auc(y_true: np.ndarray, scores: np.ndarray) -> float | None:
         # of disappearing as None on the dashboard.
         logger.debug("roc_auc_score returned ValueError: %s", exc)
         return None
+
+
+_STATE_FAILURE = "falha"
+_STATE_RECURRENT = "recorrente"
+_STATE_STABLE = "estavel"
+
+# State-classification thresholds. Tuned against IMS Run 2 ground truth: only
+# Bearing 1 has a documented failure — B2/B3/B4 are healthy per the paper. Any
+# rule that pushes B2/B3/B4 into "falha" contradicts the dataset.
+_RECENT_FRAC = 0.25
+_FAIL_RECENT_RATE = 0.60
+_FAIL_EXCESS_PCT = 20.0
+_RECURRENT_RECENT_RATE = 0.10
+
+
+def _bearing_state(scores: np.ndarray, threshold: float) -> tuple[str, float, float]:
+    """Classify a bearing's current state from its score history.
+
+    Uses the trailing ``_RECENT_FRAC`` of the score series — sustained recent
+    behaviour is a stronger signal than peak score alone (a single noisy
+    snapshot can drive max well above threshold without a real failure).
+
+    Returns
+    -------
+    state:        one of ``_STATE_FAILURE``, ``_STATE_RECURRENT``, ``_STATE_STABLE``.
+    recent_rate:  fraction of recent snapshots above threshold (0..1).
+    excess_pct:   max score's percentage excess over threshold.
+    """
+    if len(scores) == 0:
+        return _STATE_STABLE, 0.0, 0.0
+    n_recent = max(int(len(scores) * _RECENT_FRAC), 1)
+    recent_above = scores[-n_recent:] >= threshold
+    recent_rate = float(recent_above.mean())
+    excess_pct = (float(scores.max()) - threshold) / max(threshold, 1e-9) * 100.0
+
+    if recent_rate >= _FAIL_RECENT_RATE and excess_pct >= _FAIL_EXCESS_PCT:
+        return _STATE_FAILURE, recent_rate, excess_pct
+    if recent_rate >= _RECURRENT_RECENT_RATE:
+        return _STATE_RECURRENT, recent_rate, excess_pct
+    return _STATE_STABLE, recent_rate, excess_pct
 
 
 def _load_all_thresholds(model_name: str) -> dict[int, float]:
@@ -856,7 +902,7 @@ def _fig_score_over_time_by_bearing(
         )
 
     fig.update_layout(
-        title="Bearing 1 diverge claramente dos demais — sinal de falha iminente",
+        title="Score de anomalia por rolamento — linhas pontilhadas = limite p99 calibrado",
         xaxis_title="Data",
         yaxis_title="Score de anomalia",
         height=380,
@@ -880,46 +926,68 @@ def _hero(
     threshold: float,
     bearing_id: int | None = None,
     timestamps: pd.DatetimeIndex | None = None,
+    state: str | None = None,
+    recent_rate: float | None = None,
 ) -> None:
+    """Render the page-top status banner.
+
+    ``state`` / ``recent_rate`` come from :func:`_bearing_state` evaluated on the
+    bearing's *full* score history (not just the test slice). The test slice
+    alone biases towards the end of the run and would push every bearing into
+    "falha" — contradicting the IMS ground truth that only B1 fails.
+    """
     above = scores >= threshold
-    flagged = int(above.sum())
-    tp = int((above & (y_test == 1)).sum())
-    fp = int((above & (y_test == 0)).sum())
-    n_pos = int(y_test.sum())
-    n_neg = len(y_test) - n_pos
-    recall = tp / n_pos if n_pos > 0 else 0.0
-    fp_rate = fp / n_neg if n_neg > 0 else 0.0
-
     bearing_label = f"Bearing {bearing_id}" if bearing_id else "Rolamento"
+    has_ts = timestamps is not None and len(timestamps) == len(scores)
 
-    if flagged == 0:
+    if state is None:
+        # Fall back to a local classification if the caller didn't supply one.
+        state, recent_rate, _ = _bearing_state(scores, threshold)
+
+    if state == _STATE_STABLE:
         st.markdown(
-            f'<div class="status-ok">✅ &nbsp; {bearing_label} — Nenhuma anomalia detectada no período</div>',
+            f'<div class="status-ok">✅ &nbsp; {bearing_label} — '
+            f"Sem anomalias significativas (taxa recente {recent_rate:.1%})</div>",
             unsafe_allow_html=True,
         )
-    else:
-        has_ts = timestamps is not None and len(timestamps) == len(scores)
-        first_idx = int(np.argmax(above))
-
-        if bearing_id == 1 and has_ts:
+    elif state == _STATE_FAILURE:
+        if above.any() and has_ts:
+            first_idx = int(np.argmax(above))
             first_ts_str = timestamps[first_idx].strftime("%d/%m/%Y às %H:%M")
             hours_early = (timestamps[-1] - timestamps[first_idx]).total_seconds() / 3600
-            detail = (
-                f"Pista Externa &nbsp;·&nbsp; 1ª detecção: <b>{first_ts_str}</b>"
-                f" &nbsp;·&nbsp; {hours_early:.0f}h de antecedência"
-                f" &nbsp;·&nbsp; {recall:.0%} dos eventos capturados"
-                f" &nbsp;·&nbsp; {fp_rate:.1%} de falsos alarmes"
-            )
+            tp = int((above & (y_test == 1)).sum())
+            n_pos = int(y_test.sum())
+            fp = int((above & (y_test == 0)).sum())
+            n_neg = len(y_test) - n_pos
+            recall = tp / n_pos if n_pos > 0 else None
+            fp_rate = fp / n_neg if n_neg > 0 else None
+            parts = [
+                f"1ª detecção: <b>{first_ts_str}</b>",
+                f"{hours_early:.0f}h de antecedência",
+            ]
+            if recall is not None:
+                parts.append(f"{recall:.0%} dos eventos capturados")
+            if fp_rate is not None:
+                parts.append(f"{fp_rate:.1%} de falsos alarmes")
+            detail = " &nbsp;·&nbsp; ".join(parts)
             st.markdown(
-                f'<div class="status-warn">⚠️ &nbsp; Bearing 1 — Falha detectada &nbsp;|&nbsp; {detail}</div>',
+                f'<div class="status-warn">🔴 &nbsp; {bearing_label} — '
+                f"Falha em progressão &nbsp;|&nbsp; {detail}</div>",
                 unsafe_allow_html=True,
             )
         else:
             st.markdown(
-                f'<div class="status-warn">⚠️ &nbsp; {bearing_label} — {tp} snapshots acima do limiar'
-                f" &nbsp;·&nbsp; {recall:.0%} captura &nbsp;·&nbsp; {fp} falsos alarmes</div>",
+                f'<div class="status-warn">🔴 &nbsp; {bearing_label} — Falha em progressão '
+                f"&nbsp;·&nbsp; {recent_rate:.0%} dos snapshots recentes acima do limite</div>",
                 unsafe_allow_html=True,
             )
+    else:  # recurrent
+        st.markdown(
+            f'<div class="status-recurrent">🟠 &nbsp; {bearing_label} — '
+            f"Anomalias recorrentes &nbsp;·&nbsp; {recent_rate:.0%} dos snapshots recentes acima do limite "
+            "&nbsp;·&nbsp; sem falha documentada pelo paper</div>",
+            unsafe_allow_html=True,
+        )
     st.markdown("<br>", unsafe_allow_html=True)
 
 
@@ -930,40 +998,85 @@ def _kpi_row(
     prediction: dict | None,
     selected_idx: int,
     timestamps: pd.DatetimeIndex,
+    state: str | None = None,
+    recent_rate: float | None = None,
 ) -> None:
     n_total = len(scores)
     n_pos = int(y_test.sum())
     n_neg = n_total - n_pos
-    tp = int(((scores >= threshold) & (y_test == 1)).sum())
-    fp = int(((scores >= threshold) & (y_test == 0)).sum())
+    above = scores >= threshold
+    flagged = int(above.sum())
+    tp = int((above & (y_test == 1)).sum())
+    fp = int((above & (y_test == 0)).sum())
     recall = tp / n_pos if n_pos > 0 else 0.0
     precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0
     f1 = 2 * precision * recall / (precision + recall) if (precision + recall) > 0 else 0.0
     fp_rate = fp / n_neg if n_neg > 0 else 0.0
+    flagged_rate = flagged / n_total if n_total > 0 else 0.0
+    max_score = float(scores.max())
+    excess_pct = (max_score - threshold) / max(threshold, 1e-9) * 100
+
+    # Resolve state up front so both the KPI cards and the prediction card
+    # render the same classification.
+    if state is None:
+        state, recent_rate, _ = _bearing_state(scores, threshold)
 
     kpi1, kpi2, kpi3, kpi4, pred_col = st.columns([1, 1, 1, 1, 2])
 
-    kpi1.metric(
-        "Degradações detectadas",
-        f"{tp} / {n_pos}",
-        f"{recall:.1%} dos snapshots anômalos",
-        help="Snapshots marcados como degradados no rótulo que o modelo alertou.",
-    )
-    kpi2.metric(
-        "Falsos alarmes",
-        fp,
-        f"{fp_rate:.1%} dos snapshots saudáveis",
-        delta_color="inverse",
-        help="Snapshots saudáveis que o modelo incorretamente alertou.",
-    )
-    kpi3.metric(
-        "F1 Score",
-        f"{f1:.1%}",
-        help="Média harmônica entre detecção e precisão. 100% = modelo perfeito.",
-    )
+    if n_pos > 0:
+        # Failure-class metrics are meaningful only when the bearing actually
+        # has labelled degradation in the slice (i.e. Bearing 1 in IMS Run 2).
+        kpi1.metric(
+            "Degradações detectadas",
+            f"{tp} / {n_pos}",
+            f"{recall:.1%} dos snapshots anômalos",
+            help="Snapshots marcados como degradados no rótulo que o modelo alertou.",
+        )
+        kpi2.metric(
+            "Falsos alarmes",
+            fp,
+            f"{fp_rate:.1%} dos snapshots saudáveis",
+            delta_color="inverse",
+            help="Snapshots saudáveis que o modelo incorretamente alertou.",
+        )
+        kpi3.metric(
+            "F1 Score",
+            f"{f1:.1%}",
+            help="Média harmônica entre detecção e precisão. 100% = modelo perfeito.",
+        )
+    else:
+        # No documented failure for this bearing — recall/precision/F1 are
+        # undefined. Show the model's raw alerting behaviour instead.
+        kpi1.metric(
+            "Snapshots acima do limite",
+            f"{flagged} / {n_total}",
+            f"{flagged_rate:.1%} do período",
+            delta_color="inverse",
+            help=(
+                "Sem falha documentada para este rolamento — KPIs de recall/F1 "
+                "não se aplicam. Mostrando taxa bruta de alerta."
+            ),
+        )
+        recent_rate_kpi = (
+            recent_rate if recent_rate is not None else (_bearing_state(scores, threshold)[1])
+        )
+        kpi2.metric(
+            "Taxa recente",
+            f"{recent_rate_kpi:.1%}",
+            "últimos 25% do período",
+            delta_color="inverse" if recent_rate_kpi >= _RECURRENT_RECENT_RATE else "normal",
+            help="Fração de snapshots recentes acima do limite — sinal de drift.",
+        )
+        kpi3.metric(
+            "Status",
+            {
+                _STATE_FAILURE: "Falha",
+                _STATE_RECURRENT: "Recorrente",
+                _STATE_STABLE: "Estável",
+            }.get(state or _STATE_STABLE, "—"),
+            help="Classificação automática a partir do histórico completo do rolamento.",
+        )
 
-    max_score = float(scores.max())
-    excess_pct = (max_score - threshold) / max(threshold, 1e-9) * 100
     kpi4.metric(
         "Score máximo",
         f"{max_score:.4f}",
@@ -985,7 +1098,7 @@ def _kpi_row(
                 "</div>",
                 unsafe_allow_html=True,
             )
-        elif excess_pct >= 20:
+        elif state == _STATE_FAILURE:
             detected_line = ""
             above_idx = np.flatnonzero(scores >= threshold)
             if len(above_idx) > 0 and len(timestamps) == len(scores):
@@ -996,9 +1109,19 @@ def _kpi_row(
                 '<div class="fail-card">'
                 "<h2>🔴 Falha em progressão</h2>"
                 + detected_line
-                + f"<p>Score máx. <b>{max_score:.4f}</b> — {excess_pct:+.0f}% acima do limite</p>"
-                f"<p>Score selecionado: {scores[selected_idx]:.4f}</p>"
+                + f"<p>{recent_rate:.0%} dos snapshots recentes acima do limite</p>"
+                f"<p>Score máx. <b>{max_score:.4f}</b> — {excess_pct:+.0f}% vs. limite</p>"
                 f"<p style='font-size:0.8rem;color:#aaa;'>Limite: {threshold:.4f}</p>"
+                "</div>",
+                unsafe_allow_html=True,
+            )
+        elif state == _STATE_RECURRENT:
+            st.markdown(
+                '<div class="recur-card">'
+                "<h2>🟠 Anomalias recorrentes</h2>"
+                f"<p>{recent_rate:.0%} dos snapshots recentes acima do limite</p>"
+                f"<p>Score máx. <b>{max_score:.4f}</b> — {excess_pct:+.0f}% vs. limite</p>"
+                "<p style='font-size:0.8rem;color:#aaa;'>Sem falha documentada pelo paper neste rolamento</p>"
                 "</div>",
                 unsafe_allow_html=True,
             )
@@ -1011,7 +1134,7 @@ def _kpi_row(
             st.markdown(
                 '<div class="ok-card">'
                 "<h2>📈 Tendência estável</h2>"
-                "<p>Nenhuma projeção de falha no horizonte</p>"
+                f"<p>{recent_rate:.0%} dos snapshots recentes acima do limite</p>"
                 f"<p>Snapshot: {sel_ts}</p>"
                 f"<p>Score: {scores[selected_idx]:.4f}</p>"
                 "</div>",
@@ -1027,8 +1150,13 @@ def _render_auto_diagnosis(
     X_bear: np.ndarray,
     X_healthy: np.ndarray,
     feature_names: list[str],
+    state: str | None = None,
 ) -> None:
-    """Render a natural-language paragraph summarizing the bearing's condition."""
+    """Render a natural-language paragraph summarizing the bearing's condition.
+
+    Phrasing adapts to ``state``: a recurrent bearing isn't described as
+    "failure detected" — the paper doesn't document a failure there.
+    """
     above = scores >= threshold
     has_ts = len(timestamps) == len(scores)
 
@@ -1046,7 +1174,6 @@ def _render_auto_diagnosis(
     max_score = float(scores[max_idx])
     excess_pct = (max_score - threshold) / max(threshold, 1e-9) * 100
 
-    # Dominant feature at the worst snapshot
     mean_h = X_healthy.mean(axis=0)
     std_h = X_healthy.std(axis=0) + 1e-9
     z_worst = (X_bear[max_idx] - mean_h) / std_h
@@ -1058,34 +1185,51 @@ def _render_auto_diagnosis(
 
     bearing_str = f"**Bearing {bearing_id}**" if bearing_id else "**este rolamento**"
     parts: list[str] = []
+    is_failure = state == _STATE_FAILURE
 
-    if has_ts:
-        first_ts_str = timestamps[first_idx].strftime("%d/%m/%Y às %H:%M")
-        hours_early = (timestamps[-1] - timestamps[first_idx]).total_seconds() / 3600
-        parts.append(
-            f"O modelo detectou a primeira anomalia no {bearing_str} em "
-            f"**{first_ts_str}**, com **{hours_early:.0f} horas** de antecedência "
-            f"em relação ao fim do período monitorado."
-        )
+    if is_failure:
+        if has_ts:
+            first_ts_str = timestamps[first_idx].strftime("%d/%m/%Y às %H:%M")
+            hours_early = (timestamps[-1] - timestamps[first_idx]).total_seconds() / 3600
+            parts.append(
+                f"O modelo detectou a primeira anomalia no {bearing_str} em "
+                f"**{first_ts_str}**, com **{hours_early:.0f} horas** de antecedência "
+                f"em relação ao fim do período monitorado."
+            )
+        else:
+            parts.append(
+                f"O modelo detectou a primeira anomalia no {bearing_str} no snapshot **#{first_idx}**."
+            )
+        if has_ts:
+            max_ts_str = timestamps[max_idx].strftime("%d/%m/%Y às %H:%M")
+            parts.append(
+                f"O score cresceu de **{first_score:.4f}** (1ª detecção) para "
+                f"**{max_score:.4f}** no pico (**{max_ts_str}**) — "
+                f"**{excess_pct:+.0f}%** acima do limiar de {threshold:.4f}."
+            )
+        else:
+            parts.append(
+                f"O score cresceu de **{first_score:.4f}** (1ª detecção) para "
+                f"**{max_score:.4f}** no pico — **{excess_pct:+.0f}%** acima do limiar de {threshold:.4f}."
+            )
     else:
+        # Recurrent or stable-but-some-flags: report the model output without
+        # claiming a failure that the paper doesn't document.
+        n_flag = int(above.sum())
+        flag_rate = n_flag / len(scores)
         parts.append(
-            f"O modelo detectou a primeira anomalia no {bearing_str} no snapshot **#{first_idx}**."
+            f"O modelo flagga **{n_flag}** snapshots ({flag_rate:.1%} do período) acima do limite "
+            f"para o {bearing_str}, com score máximo de **{max_score:.4f}** "
+            f"(**{excess_pct:+.0f}%** vs. limiar de {threshold:.4f})."
         )
-
-    if has_ts:
-        max_ts_str = timestamps[max_idx].strftime("%d/%m/%Y às %H:%M")
         parts.append(
-            f"O score cresceu de **{first_score:.4f}** (1ª detecção) para "
-            f"**{max_score:.4f}** no pico (**{max_ts_str}**) — **{excess_pct:+.0f}%** acima do limiar de {threshold:.4f}."
-        )
-    else:
-        parts.append(
-            f"O score cresceu de **{first_score:.4f}** (1ª detecção) para "
-            f"**{max_score:.4f}** no pico — **{excess_pct:+.0f}%** acima do limiar de {threshold:.4f}."
+            "O paper IMS Run 2 não documenta falha neste rolamento. Picos podem "
+            "refletir drift operacional, mudança de regime ou acoplamento mecânico "
+            "via eixo com o rolamento que falha (B1)."
         )
 
     parts.append(
-        f"A feature de maior desvio no momento crítico é **{dom_label}** "
+        f"A feature de maior desvio no pico é **{dom_label}** "
         f"(z = **{dom_z:+.1f}σ**), consistente com {hint}."
     )
 
@@ -1105,12 +1249,24 @@ def _detail_panel(
     sel: int,
     threshold: float,
     X_healthy: np.ndarray | None = None,
+    state: str | None = None,
 ) -> None:
     has_ts = len(timestamps) == len(scores)
     sel_score = float(scores[sel])
     is_anom = sel_score >= threshold
-    badge_color = "red" if is_anom else "green"
-    badge_text = "ANOMALIA DETECTADA" if is_anom else "Normal"
+    # For non-failure bearings, "ANOMALIA DETECTADA" overstates a score that
+    # crossed the p99 limit — by design ~1% of healthy snapshots will. Use the
+    # softer "ACIMA DO LIMITE" so the language stays honest. Same for the
+    # caption's "Diagnóstico do modelo" line.
+    documented_failure = state == _STATE_FAILURE
+    if is_anom:
+        badge_color = "red" if documented_failure else "orange"
+        badge_text = "ANOMALIA DETECTADA" if documented_failure else "ACIMA DO LIMITE"
+        diag_text = "FALHA" if documented_failure else "score acima do limite"
+    else:
+        badge_color = "green"
+        badge_text = "Normal"
+        diag_text = "normal"
     label_text = "degradado (rótulo)" if y_test[sel] else "saudável (rótulo)"
 
     ts_str = timestamps[sel].strftime("%d/%m/%Y %H:%M") if has_ts else f"#{sel}"
@@ -1131,7 +1287,7 @@ def _detail_panel(
 
     st.caption(
         f"**Rótulo real:** {label_text} · "
-        f"**Diagnóstico do modelo:** {'FALHA' if is_anom else 'normal'} · "
+        f"**Diagnóstico do modelo:** {diag_text} · "
         f"**Limiar:** {threshold:.4f}"
     )
 
@@ -1248,11 +1404,7 @@ def main() -> None:
                 selected_bearing = st.selectbox(
                     "Rolamento analisado",
                     options=available_bearings,
-                    format_func=lambda b: (
-                        f"Bearing {b}  ⚠ Falha documentada"
-                        if b == 1
-                        else f"Bearing {b}  ✓ Saudável"
-                    ),
+                    format_func=lambda b: f"Bearing {b}",
                 )
                 bear_mask = (meta_test["_meta_bearing_id"] == selected_bearing).values
             else:
@@ -1316,11 +1468,39 @@ def main() -> None:
         st.session_state["_last_bearing"] = selected_bearing
         st.session_state.pop("selected_idx", None)
 
+    # --- Bearing state from FULL history (not just test slice) ---
+    # The test slice is the chronological tail of the run — using it alone
+    # biases every bearing toward "falha". Full-history scoring gives the
+    # honest current state.
+    full_data = compute_full_dataset_scores(model_name)
+    bearing_state_val: str | None = None
+    recent_rate_val: float | None = None
+    if full_data is not None and selected_bearing is not None:
+        full_scores_all, _full_y_all, full_bids_all = full_data
+        bear_full_mask_state = full_bids_all == selected_bearing
+        scores_full_for_state = full_scores_all[bear_full_mask_state]
+        bearing_state_val, recent_rate_val, _ = _bearing_state(scores_full_for_state, threshold)
+
     # --- Prediction ---
-    prediction = _predict_failure(scores, timestamps, threshold)
+    # Only run the linear-extrapolation failure projection when the bearing is
+    # actually in failure state. Otherwise a noisy upward trend on a healthy
+    # bearing can produce a "🔮 Falha prevista em Xh" card — exactly the kind
+    # of overclaim the three-tier state classifier exists to prevent.
+    if bearing_state_val == _STATE_FAILURE:
+        prediction = _predict_failure(scores, timestamps, threshold)
+    else:
+        prediction = None
 
     # --- Hero (status + key facts) ---
-    _hero(scores, y_bear, threshold, bearing_id=selected_bearing, timestamps=timestamps)
+    _hero(
+        scores,
+        y_bear,
+        threshold,
+        bearing_id=selected_bearing,
+        timestamps=timestamps,
+        state=bearing_state_val,
+        recent_rate=recent_rate_val,
+    )
 
     # --- Init selected snapshot ---
     if "selected_idx" not in st.session_state:
@@ -1329,12 +1509,20 @@ def main() -> None:
     st.session_state.selected_idx = int(np.clip(st.session_state.selected_idx, 0, len(scores) - 1))
 
     # --- KPIs + prediction card ---
-    _kpi_row(scores, y_bear, threshold, prediction, st.session_state.selected_idx, timestamps)
+    _kpi_row(
+        scores,
+        y_bear,
+        threshold,
+        prediction,
+        st.session_state.selected_idx,
+        timestamps,
+        state=bearing_state_val,
+        recent_rate=recent_rate_val,
+    )
 
     st.divider()
 
-    # --- Auto-diagnosis + Separability chart ---
-    full_data = compute_full_dataset_scores(model_name)
+    # --- Auto-diagnosis + Separability chart (reuses full_data computed above) ---
     if full_data is not None and X_healthy is not None and selected_bearing is not None:
         full_scores, full_y, full_bids = full_data
         bear_full_mask = full_bids == selected_bearing
@@ -1357,11 +1545,17 @@ def main() -> None:
                 X_bear=X_test[bear_mask],
                 X_healthy=X_healthy,
                 feature_names=feature_names,
+                state=bearing_state_val,
             )
             if auc is not None:
                 st.caption(
                     f"AUC no dataset completo (train+test): **{auc:.4f}**. "
                     "Valores acima de 0,80 indicam forte separabilidade entre saudável e degradado."
+                )
+            else:
+                st.caption(
+                    "AUC indisponível: este rolamento não tem falha documentada "
+                    "no paper, então a métrica de separabilidade não se aplica."
                 )
 
         with sep_col:
@@ -1394,9 +1588,9 @@ def main() -> None:
     if multi_fig is not None:
         st.subheader("📊 Visão Geral — 4 Rolamentos em Paralelo")
         st.caption(
-            "O Bearing 1 (vermelho) diverge dos demais a partir de ~16/02: score cresce enquanto os outros permanecem estáveis. "
-            "Linhas pontilhadas coloridas = limiar calibrado por rolamento (p99 dos saudáveis). "
-            "Use o seletor na barra lateral para analisar cada rolamento individualmente."
+            "Score de anomalia por rolamento ao longo dos 7 dias. "
+            "Linhas pontilhadas coloridas = limiar p99 calibrado por rolamento (≤ 1% de falsos alarmes por design). "
+            "Bearing 1 é o único com falha documentada pelo paper IMS Run 2 (pista externa)."
         )
         st.plotly_chart(multi_fig, use_container_width=True)
         st.divider()
@@ -1446,6 +1640,7 @@ def main() -> None:
         st.session_state.selected_idx,
         threshold,
         X_healthy=X_healthy,
+        state=bearing_state_val,
     )
 
     # --- SHAP ---

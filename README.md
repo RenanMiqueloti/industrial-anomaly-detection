@@ -9,7 +9,9 @@
 Modelos treinados **exclusivamente em dados saudáveis** — sem nenhum rótulo de falha — capazes de detectar degradação de rolamentos horas antes do colapso, com limiar calibrado por rolamento (≤ 1% de falsos alarmes por design).
 
 > **Resultado principal — Bearing 1 (IMS/NASA Run 2):**
-> AUC = **0.8705** (dataset completo) · TP = **71.7%** no período rotulado como degradado · FP = **1.0%** no período saudável de calibração · limiar = p99 dos scores saudáveis de cada rolamento.
+> AUC = **0.8735** (dataset completo) · TP = **69.0%** no período rotulado como degradado · FP = **1.0%** no período saudável de calibração · limiar = p99 dos scores saudáveis de cada rolamento.
+>
+> Os outros 3 rolamentos não têm falha documentada pelo paper. O dashboard os classifica em três tiers — **falha em progressão**, **anomalias recorrentes** (sinal acima do limite sem correspondência no ground truth) e **tendência estável** — em vez de carimbar "falha" em qualquer score que cruze o limiar.
 
 ---
 
@@ -33,18 +35,20 @@ No test split (30% finais dos snapshots, cobrindo as últimas ~47h do run), o sc
 
 ## Separabilidade dos scores por rolamento
 
-A capacidade do modelo de separar janelas saudáveis de degradadas varia por rolamento — exatamente como esperado: o Bearing 1 (que falhou) apresenta a maior separação, enquanto o Bearing 3 (que não falhou) mostra scores quase sobrepostos. **O modelo não sobre-alerta onde não há falha.**
+Os rótulos do dataset seguem o ground truth do paper IMS Run 2: **somente o Bearing 1 falha (pista externa) no fim do período**. Os outros três permanecem saudáveis até o final — e portanto não têm classe degradada para calcular AUC.
 
 ![Distribuição de scores por rolamento — AUC por bearing](docs/assets/score_separability.png)
 
-| Rolamento | AUC¹ | Condição real |
-|---|---|---|
-| **Bearing 1** | **0.8705** | Falha documentada — pista externa (outer race) |
-| Bearing 2 | 0.7676 | Sem falha registrada |
-| Bearing 3 | 0.6174 | Sem falha registrada |
-| Bearing 4 | 0.8034 | Sem falha registrada |
+| Rolamento | AUC¹ | Estado no dashboard² | Condição real (paper) |
+|---|---|---|---|
+| **Bearing 1** | **0.8735** | 🔴 Falha em progressão | Falha documentada — pista externa (outer race) |
+| Bearing 2 | N/A | 🟠 Anomalias recorrentes | Sem falha registrada |
+| Bearing 3 | N/A | ✅ Tendência estável | Sem falha registrada |
+| Bearing 4 | N/A | 🟠 Anomalias recorrentes | Sem falha registrada |
 
-> ¹ AUC calculado nos 3.936 rows completos (984 snapshots × 4 rolamentos). O split temporal concentra todas as amostras degradadas do B1 no conjunto de teste, tornando o AUC test-only indefinido para esse rolamento.
+> ¹ AUC calculado nos 3.936 rows completos. Indefinido para B2/B3/B4 porque o paper não documenta classe degradada — recall/precision/F1 também caem com isso, e o dashboard troca os KPIs por taxa bruta de alerta nesses casos.
+>
+> ² Estado derivado da fração de snapshots recentes acima do limite p99: ≥ 60% → falha · ≥ 10% → recorrente · < 10% → estável. B2/B4 ficam acima do limite com frequência maior do que o nível de calibração (~1%) — provável drift operacional ou acoplamento via eixo com o B1, mas o paper não atribui falha a eles.
 
 ---
 
@@ -52,9 +56,15 @@ A capacidade do modelo de separar janelas saudáveis de degradadas varia por rol
 
 Três detectores de anomalia não supervisionados, treinados nos mesmos dados saudáveis e avaliados com intervalos de confiança bootstrap (1.000 reamostras):
 
+| Modelo | ROC-AUC (IC 95%) | F1 (IC 95%) | Train time |
+|---|---|---|---|
+| IsolationForest | 0.930 [0.916, 0.943] | 0.667 [0.630, 0.701] | 0.14s |
+| OC-SVM | 0.943 [0.929, 0.954] | 0.667 [0.629, 0.702] | 0.03s |
+| AutoEncoder | 0.944 [0.931, 0.955] | 0.666 [0.628, 0.701] | 31.29s |
+
 ![Comparação de modelos — ROC-AUC e F1 com IC bootstrap](docs/assets/model_comparison.png)
 
-> A figura inclui um quarto modelo (LOF) que foi removido depois do benchmark. LOF é density-based e assume anomalia como ponto isolado em região esparsa — degradação de rolamento é drift gradual, não outlier pontual. A figura será regenerada na próxima rodada de `make compare`.
+> Os três modelos são estatisticamente equivalentes (CIs sobrepostos) com os rótulos do paper. IsolationForest é mantido como default pelo custo/benefício — score interpretável, SHAP exato via TreeExplainer, ~200× mais rápido que o AutoEncoder. A figura ainda mostra o LOF de uma rodada anterior (removido do benchmark) e será regenerada na próxima `make compare`.
 
 ---
 
@@ -126,14 +136,14 @@ INFO Feature matrix saved → data/features/features.parquet
 make train
 ```
 
-O IsolationForest é ajustado **exclusivamente nos primeiros 40% dos snapshots** (período saudável). O limiar de cada rolamento é o p99 dos seus próprios scores saudáveis.
+O IsolationForest é ajustado **exclusivamente nos snapshots saudáveis** (primeiros 40% do B1 + todos os snapshots de B2/B3/B4, que o paper documenta como saudáveis). O limiar de cada rolamento é o p99 dos seus próprios scores saudáveis. `make compare` também grava `ocsvm_bN` e `ae_bN` no `threshold.json` — o dashboard usa o limite específico do modelo selecionado.
 
 ```
-INFO Temporal split: 2756 train rows, 1180 test rows (cutoff: 2004-02-16 16:52)
-INFO Threshold bearing 1 (p99 healthy): 0.5265
-INFO Threshold bearing 2 (p99 healthy): 0.5448
-INFO Threshold bearing 3 (p99 healthy): 0.6604
-INFO Threshold bearing 4 (p99 healthy): 0.5630
+INFO Temporal split: 2752 train rows, 1184 test rows (cutoff: 2004-02-17 05:12)
+INFO Threshold bearing 1 (p99 healthy): 0.5422
+INFO Threshold bearing 2 (p99 healthy): 0.5292
+INFO Threshold bearing 3 (p99 healthy): 0.6503
+INFO Threshold bearing 4 (p99 healthy): 0.5681
 ```
 
 ### 6. Benchmark dos 3 modelos
@@ -152,13 +162,14 @@ make dashboard
 
 Abre em `http://localhost:8502`. Funcionalidades principais:
 
-- **Hero banner** — status imediato: data da 1ª detecção, horas de antecedência, recall e taxa de falsos alarmes
-- **Auto-diagnóstico** — parágrafo gerado automaticamente com feature dominante, z-score e modo de falha inferido (ex.: "2–5 kHz z=+129σ → frequência BPFO/BPFI")
-- **Separabilidade de scores** — histograma healthy vs. degraded por rolamento com AUC no título
-- **Timeline detalhada** — 7 dias de score com regressão de tendência e projeção de cruzamento do limiar
-- **Multi-bearing** — 4 rolamentos em paralelo com limiares individuais como linhas pontilhadas coloridas
-- **Inspeção de snapshot** — barra de z-score por feature ordenada por desvio + histograma de posição percentil
-- **Explicabilidade SHAP** — waterfall por snapshot sob demanda (TreeExplainer para IsolationForest)
+- **Hero banner** — estado em três tiers (`falha`, `recorrente`, `estável`) derivado da fração de snapshots recentes acima do limite. Para o B1: lead time, recall e taxa de falsos alarmes. Para B2/B4: nota explícita de "sem falha documentada pelo paper". Para B3: "sem anomalias significativas"
+- **KPIs adaptativos** — quando o rolamento tem falha documentada (B1), mostra recall/F1/false alarms. Quando não tem (B2/B3/B4), mostra taxa bruta de flagged + status
+- **Auto-diagnóstico** — parágrafo gerado automaticamente. Linguagem suaviza para B2/B4: relata fração flagged e feature dominante sem alegar "1ª detecção" ou "antecedência"
+- **Separabilidade de scores** — histograma healthy vs. degraded por rolamento com AUC no título (N/A explícito para rolamentos sem classe degradada)
+- **Timeline detalhada** — 7 dias de score. Projeção linear "🔮 Falha prevista em Xh" só dispara se o estado já é `falha` — evita projeção fantasma em rolamento saudável
+- **Multi-bearing** — 4 rolamentos em paralelo com limiares individuais por rolamento E por modelo (cada um dos 3 modelos tem seu próprio p99 calibrado)
+- **Inspeção de snapshot** — barra de z-score por feature + histograma de posição percentil. Badge "ACIMA DO LIMITE" (laranja) em vez de "ANOMALIA DETECTADA" (vermelho) quando o rolamento não tem falha documentada
+- **Explicabilidade SHAP** — waterfall por snapshot sob demanda (TreeExplainer para IsolationForest, KernelExplainer para OC-SVM/AutoEncoder)
 
 ---
 
@@ -235,7 +246,7 @@ feats = extract_all(window, fs=20_000)  # → dict[str, float], 11 chaves
 | Rolamento com falha | **Bearing 1** — pista externa (outer race fault) ao final do período |
 | Timestamps | Reais — nome do arquivo `YYYY.MM.DD.HH.MM.SS` |
 | Intervalo entre snapshots | ~10 minutos |
-| Rótulos | y=0: primeiros 40% dos snapshots (saudável) · y=1: restante |
+| Rótulos | Ground truth do paper: **B1** → y=1 nos últimos 60% (degradação documentada) · **B2/B3/B4** → y=0 sempre (saudáveis até o fim) |
 | Split treino/teste | Temporal por timestamp único (70/30) — sem data leakage |
 
 ---

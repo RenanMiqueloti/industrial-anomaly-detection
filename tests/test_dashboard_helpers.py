@@ -191,6 +191,58 @@ def test_predict_failure_returns_none_for_flat_trend() -> None:
     assert dash._predict_failure(scores, timestamps, threshold=1.0) is None
 
 
+# ---------------------------------------------------------------------------
+# _bearing_state — three-tier classification
+# ---------------------------------------------------------------------------
+def test_bearing_state_sustained_recent_is_failure() -> None:
+    """≥ 60% recent above threshold + ≥ 20% excess → falha."""
+    # 100 snapshots: first 75 below, last 25 well above threshold
+    scores = np.concatenate([np.full(75, 0.30), np.full(25, 0.80)])
+    state, recent_rate, excess_pct = dash._bearing_state(scores, threshold=0.50)
+    assert state == dash._STATE_FAILURE
+    assert recent_rate == pytest.approx(1.0)
+    assert excess_pct > 20
+
+
+def test_bearing_state_intermittent_recent_is_recurrent() -> None:
+    """10% < recent above threshold < 60% → recorrente, even with high peak."""
+    rng = np.random.default_rng(0)
+    scores = np.full(100, 0.30)
+    # Push 30% of recent (last 25) above threshold of 0.50.
+    recent_idx = np.arange(75, 100)
+    scores[rng.choice(recent_idx, size=8, replace=False)] = 0.70
+    state, recent_rate, _ = dash._bearing_state(scores, threshold=0.50)
+    assert state == dash._STATE_RECURRENT
+    assert 0.10 <= recent_rate < 0.60
+
+
+def test_bearing_state_low_recent_is_stable() -> None:
+    """< 10% recent above threshold → estável, even when max barely exceeds."""
+    scores = np.full(100, 0.30)
+    scores[80] = 0.55  # 1/25 = 4% of recent above 0.50 — below 10% threshold
+    state, recent_rate, _ = dash._bearing_state(scores, threshold=0.50)
+    assert state == dash._STATE_STABLE
+    assert recent_rate < 0.10
+
+
+def test_bearing_state_high_max_alone_not_failure() -> None:
+    """A single huge spike with no sustained anomaly is NOT classified as failure.
+
+    Regression: the previous rule (``excess_pct >= 20``) flagged any bearing
+    with one outlier as "Falha em progressão" — falsely marking B2/B4 as
+    failing on IMS Run 2 where the paper only documents B1.
+    """
+    scores = np.full(100, 0.30)
+    scores[80] = 5.0  # massive outlier, but isolated
+    state, _, excess_pct = dash._bearing_state(scores, threshold=0.50)
+    assert state != dash._STATE_FAILURE
+    assert excess_pct > 100  # excess is huge, but rule requires recent rate too
+
+
+def test_bearing_state_empty_input_is_stable() -> None:
+    assert dash._bearing_state(np.array([]), threshold=1.0)[0] == dash._STATE_STABLE
+
+
 def test_predict_failure_suppresses_noise_drift_far_below_threshold() -> None:
     """Noisy scores well below threshold should not produce a projection.
 

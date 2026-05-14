@@ -204,6 +204,13 @@ def _cmd_train(_args: argparse.Namespace) -> None:
     # as IForest (avoids leakage between IForest's test set and the other
     # models' training data).
     np.save(_RESULTS / "X_train_healthy.npy", X_healthy)
+    # Bearing IDs aligned with X_train_healthy — compare.py uses these to
+    # compute per-bearing p99 thresholds for OC-SVM and AutoEncoder, matching
+    # what IForest already gets here.
+    if "_meta_bearing_id" in df.columns:
+        bid_train = df.iloc[idx_train]["_meta_bearing_id"].values
+        bid_train_healthy = bid_train[y_train == 0].astype(int)
+        np.save(_RESULTS / "bid_train_healthy.npy", bid_train_healthy)
     logger.info("Test split saved → %s", _RESULTS)
 
     meta_cols = [c for c in df.columns if c.startswith("_meta_")]
