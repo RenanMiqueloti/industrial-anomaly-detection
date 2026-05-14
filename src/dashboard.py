@@ -186,11 +186,36 @@ def load_healthy_baseline() -> np.ndarray | None:
     return df.loc[df["_meta_y"] == 0, feat_cols].values
 
 
+_PRECOMPUTED_SCORES = _RESULTS / "full_dataset_scores.parquet"
+
+
 @st.cache_data
 def compute_full_dataset_scores(
     model_name: str,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray] | None:
-    """Score the entire feature parquet. Returns (scores, y, bearing_ids)."""
+    """Return (scores, y, bearing_ids) for the entire feature parquet.
+
+    Reads ``results/full_dataset_scores.parquet`` when it exists (produced by
+    ``make precompute-scores``). Falls back to scoring the parquet on the fly
+    so deployments that haven't re-run the pipeline keep working.
+    """
+    score_col = _MODEL_THRESHOLD_KEY.get(model_name)
+    if _PRECOMPUTED_SCORES.exists() and score_col is not None:
+        df_scores = pd.read_parquet(_PRECOMPUTED_SCORES)
+        if score_col in df_scores.columns:
+            scores = df_scores[score_col].values.astype(np.float64)
+            y = (
+                df_scores["_meta_y"].values
+                if "_meta_y" in df_scores.columns
+                else np.zeros(len(scores), dtype=int)
+            )
+            bearing_ids = (
+                df_scores["_meta_bearing_id"].astype(int).values
+                if "_meta_bearing_id" in df_scores.columns
+                else np.zeros(len(scores), dtype=int)
+            )
+            return scores, y, bearing_ids
+
     if not _DATA_FEATURES.exists():
         return None
     df = pd.read_parquet(_DATA_FEATURES)

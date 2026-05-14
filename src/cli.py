@@ -415,6 +415,12 @@ def _cmd_compare(_args: argparse.Namespace) -> None:
     logger.info("Figure → %s", _RESULTS / "figures" / "model_comparison.png")
 
 
+def _cmd_precompute_scores(_args: argparse.Namespace) -> None:
+    from src.precompute import precompute_scores
+
+    precompute_scores(features_path=_DATA_FEATURES, results_dir=_RESULTS)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         prog="python -m src.cli",
@@ -429,6 +435,10 @@ def main() -> None:
     sub.add_parser("explain", help="Generate SHAP explanations → results/figures/shap_*.png")
     sub.add_parser("api", help="Launch FastAPI dev server at http://localhost:8000")
     sub.add_parser("drift", help="Compute PSI drift report → results/drift_report.json")
+    sub.add_parser(
+        "precompute-scores",
+        help="Score the full feature parquet with every trained model → results/full_dataset_scores.parquet",
+    )
 
     args = parser.parse_args()
     dispatch = {
@@ -440,6 +450,7 @@ def main() -> None:
         "explain": _cmd_explain,
         "api": _cmd_api,
         "drift": _cmd_drift,
+        "precompute-scores": _cmd_precompute_scores,
     }
     dispatch[args.command](args)
 

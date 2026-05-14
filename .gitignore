@@ -35,6 +35,7 @@ results/*
 !results/y_test.npy
 !results/meta_test.parquet
 !results/comparison.parquet
+!results/full_dataset_scores.parquet
 !results/threshold.json
 !results/iforest_metrics.json
 !results/figures/
