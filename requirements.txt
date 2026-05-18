@@ -17,4 +17,4 @@ streamlit>=1.36
 plotly>=5.22
 pyarrow>=16
 tqdm>=4.66
-joblib>=1.4
+joblib>=1.5.3
