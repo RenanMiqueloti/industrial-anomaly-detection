@@ -95,24 +95,27 @@ _FEATURE_LABELS: dict[str, str] = {
 }
 
 _BEARING_COLORS: dict[int, str] = {
-    1: "#e74c3c",
-    2: "#3498db",
-    3: "#2ecc71",
-    4: "#9b59b6",
+    1: "#ef4444",
+    2: "#3b82f6",
+    3: "#14b8a6",
+    4: "#a855f7",
 }
 
-# Maps dominant feature → physical failure mode hint
+# Maps dominant feature → physical failure mode hint.
+# Frequências de defeito para Rexnord ZA-2115 a 2000 RPM (literatura, Qiu et al. 2006,
+# Bechhoefer et al., Kalikatzarakis 2018): BPFO ≈ 236 Hz, BPFI ≈ 297 Hz, BSF ≈ 140 Hz
+# (2×BSF ≈ 280 Hz), FTF ≈ 15 Hz — todas as fundamentais ficam na banda 0–500 Hz.
 _FAILURE_HINTS: dict[str, str] = {
-    "band_5000_10000": "impactos de alta frequência — dano avançado em pista ou esfera",
-    "band_2000_5000": "frequência característica de defeito de pista de rolamento (BPFO/BPFI)",
-    "band_500_2000": "harmônicos fundamentais de defeito de rolamento",
-    "band_0_500": "desbalanceamento ou ressonâncias estruturais",
+    "band_5000_10000": "alta frequência — impactos severos, ressonâncias excitadas por dano avançado",
+    "band_2000_5000": "modos estruturais (housing/eixo) excitados por impactos",
+    "band_500_2000": "harmônicos das frequências de defeito (2× a 5× BPFO/BPFI)",
+    "band_0_500": "frequências fundamentais de defeito — BPFO (~236 Hz), BPFI (~297 Hz), BSF (~140 Hz)",
     "kurtosis": "impactos periódicos impulsivos — fadiga de superfície localizada",
     "crest_factor": "picos de vibração extremos — dano concentrado",
     "rms": "vibração global elevada — degradação disseminada",
     "peak": "valores de pico extremos — impactos severos",
-    "p2p": "amplitude de vibração elevada — folgas mecânicas",
-    "std": "variabilidade de vibração alta — instabilidade mecânica",
+    "p2p": "amplitude pico-a-pico elevada — impactos ou folgas mecânicas",
+    "std": "variabilidade do sinal elevada — modulação ou regime variável",
     "skewness": "assimetria na distribuição — dano preferencial em uma direção",
 }
 
@@ -125,31 +128,43 @@ st.set_page_config(
 st.markdown(
     """
     <style>
-    [data-testid="stMetricValue"] { font-size: 1.6rem; font-weight: 700; }
-    .status-ok   { background:#1a6a3a; color:#fff; border-radius:8px;
-                   padding:12px 20px; text-align:center; font-size:1.1rem; font-weight:700; }
-    .status-warn { background:#7d1a1a; color:#fff; border-radius:8px;
-                   padding:12px 20px; text-align:center; font-size:1.1rem; font-weight:700; }
-    .status-recurrent { background:#7a5a1a; color:#fff; border-radius:8px;
-                   padding:12px 20px; text-align:center; font-size:1.1rem; font-weight:700; }
-    .recur-card  { background:#1e1e1e; border:2px solid #e67e22; border-radius:10px;
-                   padding:16px; text-align:center; }
-    .recur-card h2 { color:#e67e22; margin:0 0 4px 0; font-size:1.4rem; }
-    .recur-card p  { color:#ccc; margin:2px 0; font-size:0.9rem; }
-    .pred-card   { background:#1e1e1e; border:2px solid #e67e22; border-radius:10px;
-                   padding:16px; text-align:center; }
-    .pred-card h2 { color:#e67e22; margin:0 0 4px 0; font-size:1.4rem; }
-    .pred-card p  { color:#ccc; margin:2px 0; font-size:0.9rem; }
-    .ok-card     { background:#1e1e1e; border:2px solid #2ecc71; border-radius:10px;
-                   padding:16px; text-align:center; }
-    .ok-card h2  { color:#2ecc71; margin:0 0 4px 0; font-size:1.4rem; }
-    .ok-card p   { color:#ccc; margin:2px 0; font-size:0.9rem; }
-    .fail-card   { background:#1e1e1e; border:2px solid #e74c3c; border-radius:10px;
-                   padding:16px; text-align:center; }
-    .fail-card h2 { color:#e74c3c; margin:0 0 4px 0; font-size:1.4rem; }
-    .fail-card p  { color:#ccc; margin:2px 0; font-size:0.9rem; }
-    .diag-box    { background:#161b27; border-left:4px solid #3498db; border-radius:6px;
-                   padding:14px 18px; font-size:0.95rem; line-height:1.65; color:#e8e8e8; }
+    .block-container { padding-top: 2.2rem; padding-bottom: 3rem; max-width: 1280px; }
+    h1 { font-size: 1.7rem !important; font-weight: 600 !important; letter-spacing: -0.01em; }
+    h2 { font-size: 1.15rem !important; font-weight: 600 !important; margin-top: 0.4rem !important; }
+    h3 { font-size: 1.0rem !important; font-weight: 600 !important; }
+    [data-testid="stMetricValue"] { font-size: 1.45rem; font-weight: 600; }
+    [data-testid="stMetricLabel"] { color:#9ba3af; font-size:0.78rem; text-transform:uppercase;
+                                     letter-spacing:0.04em; }
+    [data-testid="stMetricDelta"] { font-size:0.78rem; }
+    [data-testid="stCaptionContainer"] { color:#9ba3af; }
+    hr { margin: 0.8rem 0 !important; border-color: #1f2430 !important; }
+
+    .status-card { background:#13161d; border-left:4px solid #6b7280; border-radius:4px;
+                    padding:12px 18px; font-size:0.95rem; color:#e5e7eb; }
+    .status-card .label { color:#9ba3af; font-size:0.78rem; text-transform:uppercase;
+                          letter-spacing:0.05em; margin-right:8px; }
+    .status-card .title { font-weight:600; font-size:1.05rem; }
+    .status-card .meta  { color:#9ba3af; font-size:0.85rem; margin-top:4px; }
+    .status-ok   { border-left-color:#10b981; }
+    .status-warn { border-left-color:#ef4444; }
+    .status-recurrent { border-left-color:#f59e0b; }
+
+    .info-card    { background:#13161d; border-left:4px solid #6b7280; border-radius:4px;
+                    padding:14px 18px; }
+    .info-card .heading { color:#e5e7eb; font-weight:600; font-size:0.95rem; margin:0 0 4px 0; }
+    .info-card .value   { color:#e5e7eb; font-size:1.25rem; font-weight:600; margin:2px 0; }
+    .info-card .sub     { color:#9ba3af; font-size:0.82rem; margin:2px 0; }
+    .pred-card { border-left-color:#f59e0b; }
+    .pred-card .heading { color:#f59e0b; }
+    .fail-card { border-left-color:#ef4444; }
+    .fail-card .heading { color:#ef4444; }
+    .recur-card { border-left-color:#f59e0b; }
+    .recur-card .heading { color:#f59e0b; }
+    .ok-card { border-left-color:#10b981; }
+    .ok-card .heading { color:#10b981; }
+
+    .diag-box { background:#13161d; border-left:4px solid #3b82f6; border-radius:4px;
+                padding:14px 18px; font-size:0.93rem; line-height:1.6; color:#d1d5db; }
     </style>
     """,
     unsafe_allow_html=True,
@@ -202,6 +217,20 @@ def load_healthy_baseline() -> np.ndarray | None:
     df = pd.read_parquet(_DATA_FEATURES)
     feat_cols = [c for c in df.columns if not c.startswith("_meta_")]
     return df.loc[df["_meta_y"] == 0, feat_cols].values
+
+
+@st.cache_data
+def load_full_metadata() -> pd.DataFrame | None:
+    """Return per-row metadata (timestamp, bearing_id, y) for the full feature parquet.
+
+    Aligned 1:1 with :func:`compute_full_dataset_scores` so callers can join
+    scores with bearing/time without re-reading the heavy feature matrix.
+    """
+    if not _DATA_FEATURES.exists():
+        return None
+    df = pd.read_parquet(_DATA_FEATURES)
+    cols = [c for c in ("_meta_timestamp", "_meta_bearing_id", "_meta_y") if c in df.columns]
+    return df[cols].copy()
 
 
 _PRECOMPUTED_SCORES = _RESULTS / "full_dataset_scores.parquet"
@@ -382,6 +411,29 @@ _FAIL_EXCESS_PCT = 20.0
 _RECURRENT_RECENT_RATE = 0.10
 
 
+def _first_sustained_detection(
+    scores: np.ndarray,
+    threshold: float,
+    window: int = 10,
+    frac: float = 0.8,
+) -> int | None:
+    """Index of the first ``window`` of consecutive snapshots where ``frac`` of them
+    are above ``threshold``. Returns the start index of that window, or None.
+
+    Looking for a sustained pattern instead of a single crossing rejects isolated
+    spikes — the p99 threshold leaves ~1% of healthy snapshots above by design,
+    so a one-off crossing isn't meaningful.
+    """
+    n = len(scores)
+    if n < window:
+        return None
+    above = (scores >= threshold).astype(np.int64)
+    csum = np.cumsum(np.concatenate([[0], above]))
+    rates = (csum[window:] - csum[:-window]) / window
+    hits = np.where(rates >= frac)[0]
+    return int(hits[0]) if len(hits) else None
+
+
 def _bearing_state(scores: np.ndarray, threshold: float) -> tuple[str, float, float]:
     """Classify a bearing's current state from its score history.
 
@@ -449,39 +501,13 @@ def _fig_timeline(
 
     fig = go.Figure()
 
+    # Light tint above threshold — softer than full zones, no big annotations.
     fig.add_hrect(
         y0=threshold,
         y1=y_max,
-        fillcolor="rgba(231,76,60,0.10)",
+        fillcolor="rgba(239,68,68,0.06)",
         layer="below",
         line_width=0,
-    )
-    fig.add_hrect(
-        y0=y_min,
-        y1=threshold,
-        fillcolor="rgba(46,204,113,0.07)",
-        layer="below",
-        line_width=0,
-    )
-    fig.add_annotation(
-        text="⚠️ ZONA DE RISCO",
-        x=0.01,
-        xref="paper",
-        y=threshold + (y_max - threshold) * 0.55,
-        yref="y",
-        font=dict(color="#e74c3c", size=11),
-        showarrow=False,
-        xanchor="left",
-    )
-    fig.add_annotation(
-        text="✅ ZONA SEGURA",
-        x=0.01,
-        xref="paper",
-        y=y_min + (threshold - y_min) * 0.25,
-        yref="y",
-        font=dict(color="#2ecc71", size=11),
-        showarrow=False,
-        xanchor="left",
     )
 
     x_vals = list(timestamps) if has_ts else list(range(n))
@@ -490,9 +516,8 @@ def _fig_timeline(
     if mask_ok.any():
         x_ok = [x_vals[i] for i in range(n) if mask_ok[i]]
         hover_ok = [
-            f"<b>{timestamps[i].strftime('%d/%m/%Y %H:%M') if has_ts else f'Snapshot #{i}'}</b><br>"
-            f"Score: {scores[i]:.4f}<br>Rótulo: {'saudável' if y_test[i] == 0 else 'degradado'}<br>"
-            f"Diagnóstico: Normal<extra></extra>"
+            f"{timestamps[i].strftime('%d/%m %H:%M') if has_ts else f'#{i}'} · "
+            f"score {scores[i]:.4f}<extra></extra>"
             for i in range(n)
             if mask_ok[i]
         ]
@@ -501,8 +526,8 @@ def _fig_timeline(
                 x=x_ok,
                 y=scores[mask_ok],
                 mode="markers",
-                marker=dict(color="#2ecc71", size=5, opacity=0.65),
-                name="Score normal",
+                marker=dict(color="#6b7280", size=4, opacity=0.7),
+                name="Normal",
                 customdata=np.where(mask_ok)[0].tolist(),
                 hovertemplate=hover_ok,
             )
@@ -511,9 +536,8 @@ def _fig_timeline(
     if above.any():
         x_ab = [x_vals[i] for i in range(n) if above[i]]
         hover_ab = [
-            f"<b>{timestamps[i].strftime('%d/%m/%Y %H:%M') if has_ts else f'Snapshot #{i}'}</b><br>"
-            f"Score: {scores[i]:.4f}<br>Rótulo: {'saudável' if y_test[i] == 0 else 'degradado'}<br>"
-            f"Diagnóstico: ANOMALIA<extra></extra>"
+            f"{timestamps[i].strftime('%d/%m %H:%M') if has_ts else f'#{i}'} · "
+            f"score {scores[i]:.4f} · anomalia<extra></extra>"
             for i in range(n)
             if above[i]
         ]
@@ -523,13 +547,13 @@ def _fig_timeline(
                 y=scores[above],
                 mode="markers",
                 marker=dict(
-                    color="#e74c3c",
-                    size=8,
+                    color="#ef4444",
+                    size=7,
                     symbol="diamond",
-                    opacity=0.90,
-                    line=dict(width=1, color="#111"),
+                    opacity=0.95,
+                    line=dict(width=0),
                 ),
-                name="Anomalia detectada",
+                name="Anomalia",
                 customdata=np.where(above)[0].tolist(),
                 hovertemplate=hover_ab,
             )
@@ -538,15 +562,14 @@ def _fig_timeline(
     fig.add_hline(
         y=threshold,
         line_dash="dash",
-        line_color="#e74c3c",
-        line_width=2,
-        annotation_text=f"  Limite: {threshold:.4f}",
+        line_color="#ef4444",
+        line_width=1.5,
+        annotation_text=f"Limite {threshold:.4f}",
         annotation_position="bottom right",
-        annotation_font_color="#e74c3c",
-        annotation_font_size=11,
+        annotation_font_color="#9ba3af",
+        annotation_font_size=10,
     )
 
-    # First-detection vertical line — Scatter avoids Plotly's add_vline _mean bug with strings
     if above.any():
         first_anom = int(np.argmax(above))
         x_first = x_vals[first_anom]
@@ -555,7 +578,7 @@ def _fig_timeline(
                 x=[x_first, x_first],
                 y=[y_min, y_max],
                 mode="lines",
-                line=dict(color="#3498db", width=2, dash="longdash"),
+                line=dict(color="#3b82f6", width=1.2, dash="dot"),
                 hoverinfo="skip",
                 showlegend=False,
                 name="",
@@ -564,9 +587,9 @@ def _fig_timeline(
         fig.add_annotation(
             x=x_first,
             y=y_max * 0.97,
-            text="  1ª detecção",
+            text=" 1ª detecção",
             showarrow=False,
-            font=dict(color="#3498db", size=11),
+            font=dict(color="#3b82f6", size=10),
             xanchor="left",
             xref="x",
             yref="y",
@@ -583,8 +606,8 @@ def _fig_timeline(
                     x=x_trend,
                     y=y_trend,
                     mode="lines",
-                    line=dict(color="#e67e22", width=2.5, dash="solid"),
-                    name="Tendência (últimos 25%)",
+                    line=dict(color="#f59e0b", width=2),
+                    name="Tendência",
                     hoverinfo="skip",
                 )
             )
@@ -603,20 +626,19 @@ def _fig_timeline(
                 x=x_proj_valid,
                 y=y_proj_clip,
                 mode="lines",
-                line=dict(color="#e67e22", width=2, dash="dash"),
-                name=f"Projeção → {prediction['predicted_ts'].strftime('%d/%m %H:%M') if has_ts else ''}",
+                line=dict(color="#f59e0b", width=1.5, dash="dash"),
+                name="Projeção",
                 hoverinfo="skip",
             )
         )
 
-        # Predicted failure vertical line — same Scatter approach
         x_fail = prediction["predicted_ts"] if has_ts else prediction["abs_cross"]
         fig.add_trace(
             go.Scatter(
                 x=[x_fail, x_fail],
                 y=[y_min, y_max],
                 mode="lines",
-                line=dict(color="#e67e22", width=2, dash="dot"),
+                line=dict(color="#f59e0b", width=1, dash="dot"),
                 hoverinfo="skip",
                 showlegend=False,
                 name="",
@@ -625,9 +647,9 @@ def _fig_timeline(
         fig.add_annotation(
             x=x_fail,
             y=y_max * 0.85,
-            text="  Falha prevista",
+            text=" Falha prevista",
             showarrow=False,
-            font=dict(color="#e67e22", size=11),
+            font=dict(color="#f59e0b", size=10),
             xanchor="left",
             xref="x",
             yref="y",
@@ -638,12 +660,14 @@ def _fig_timeline(
             x=[x_vals[selected_idx]],
             y=[scores[selected_idx]],
             mode="markers",
-            marker=dict(color="gold", size=18, symbol="star", line=dict(width=2, color="#111")),
-            name="Snapshot inspecionado",
-            hovertemplate=(
-                f"<b>Snapshot #{selected_idx}</b><br>"
-                f"Score: {scores[selected_idx]:.4f}<extra></extra>"
+            marker=dict(
+                color="rgba(0,0,0,0)",
+                size=14,
+                symbol="circle",
+                line=dict(width=2, color="#fbbf24"),
             ),
+            name="Selecionado",
+            hovertemplate=(f"#{selected_idx} · score {scores[selected_idx]:.4f}<extra></extra>"),
         )
     )
 
@@ -652,32 +676,27 @@ def _fig_timeline(
         xaxis_cfg = dict(type="date", tickformat="%d/%m\n%H:%M", tickangle=0, tickfont=dict(size=9))
 
     fig.update_layout(
-        title=dict(
-            text="Score de anomalia ao longo do tempo — passado e projeção futura",
-            font=dict(size=13),
-        ),
-        xaxis_title="Data / hora do snapshot" if has_ts else "Snapshot (ordem cronológica)",
-        yaxis_title="Score de anomalia  (acima do limite = suspeito)",
+        xaxis_title="Data / hora" if has_ts else "Snapshot",
+        yaxis_title="Score de anomalia",
         xaxis=xaxis_cfg,
         yaxis=dict(range=[y_min, y_max]),
-        height=490,
-        margin=dict(l=50, r=20, t=80, b=50),
+        height=440,
+        margin=dict(l=50, r=20, t=40, b=50),
         hovermode="closest",
         legend=dict(
             orientation="h",
             yanchor="bottom",
-            y=1.06,
+            y=1.02,
             xanchor="right",
             x=1,
-            bgcolor="rgba(20,20,20,0.85)",
-            bordercolor="#444",
-            borderwidth=1,
+            bgcolor="rgba(0,0,0,0)",
+            font=dict(size=11),
         ),
         plot_bgcolor="#0e1117",
         paper_bgcolor="#0e1117",
-        font=dict(color="#fafafa"),
-        xaxis_gridcolor="#1a1a1a",
-        yaxis_gridcolor="#222222",
+        font=dict(color="#e5e7eb", size=11),
+        xaxis_gridcolor="#1f2430",
+        yaxis_gridcolor="#1f2430",
     )
     return fig
 
@@ -708,16 +727,14 @@ def _fig_feature_bar(
     colors = []
     for zi in z_sorted:
         if abs(zi) > 3:
-            colors.append("#e74c3c")
+            colors.append("#ef4444")
         elif abs(zi) > 1.5:
-            colors.append("#e67e22")
+            colors.append("#f59e0b")
         else:
-            colors.append("#3498db")
+            colors.append("#6b7280")
 
     hover_text = [
-        f"<b>{lbl}</b> ({feat})<br>z = {zi:+.2f}σ<br>"
-        f"{'⚠ Desvio crítico' if abs(zi) > 3 else '△ Desvio moderado' if abs(zi) > 1.5 else '✓ Normal'}"
-        f"<extra></extra>"
+        f"<b>{lbl}</b> ({feat}) · z = {zi:+.2f}σ<extra></extra>"
         for lbl, feat, zi in zip(labels_sorted, feat_sorted, z_sorted, strict=True)
     ]
     text_vals = [f"{zi:+.1f}σ" for zi in z_sorted]
@@ -736,26 +753,24 @@ def _fig_feature_bar(
         )
     )
 
-    # Reference lines at 0, ±1.5σ, ±3σ (all floats — safe to use add_vline)
-    fig.add_vline(x=0, line_color="#555", line_width=1)
-    fig.add_vline(x=1.5, line_dash="dot", line_color="#e67e22", line_width=1, opacity=0.5)
-    fig.add_vline(x=-1.5, line_dash="dot", line_color="#e67e22", line_width=1, opacity=0.5)
-    fig.add_vline(x=3.0, line_dash="dot", line_color="#e74c3c", line_width=1, opacity=0.5)
-    fig.add_vline(x=-3.0, line_dash="dot", line_color="#e74c3c", line_width=1, opacity=0.5)
+    fig.add_vline(x=0, line_color="#374151", line_width=1)
+    fig.add_vline(x=1.5, line_dash="dot", line_color="#f59e0b", line_width=1, opacity=0.4)
+    fig.add_vline(x=-1.5, line_dash="dot", line_color="#f59e0b", line_width=1, opacity=0.4)
+    fig.add_vline(x=3.0, line_dash="dot", line_color="#ef4444", line_width=1, opacity=0.4)
+    fig.add_vline(x=-3.0, line_dash="dot", line_color="#ef4444", line_width=1, opacity=0.4)
 
     x_range = min(Z_CAP * 1.25, max(4.0, float(np.max(np.abs(z_display))) * 1.25))
 
     fig.update_layout(
-        title=f"Snapshot #{selected_idx} — Desvio por feature vs. baseline saudável",
-        xaxis_title="z-score (σ da média saudável)   |   laranja ≥ 1.5σ · vermelho ≥ 3σ",
+        xaxis_title="z-score vs. baseline saudável (σ)",
         yaxis_title=None,
         xaxis=dict(range=[-x_range, x_range], zeroline=False),
-        height=400,
-        margin=dict(l=10, r=70, t=55, b=40),
+        height=380,
+        margin=dict(l=10, r=70, t=20, b=40),
         plot_bgcolor="#0e1117",
         paper_bgcolor="#0e1117",
-        font=dict(color="#fafafa"),
-        xaxis_gridcolor="#2a2a2a",
+        font=dict(color="#e5e7eb", size=11),
+        xaxis_gridcolor="#1f2430",
         showlegend=False,
     )
     return fig
@@ -768,7 +783,7 @@ def _fig_score_hist(scores: np.ndarray, selected_idx: int, threshold: float) -> 
         go.Histogram(
             x=scores,
             nbinsx=40,
-            marker_color="#3498db",
+            marker_color="#3b82f6",
             opacity=0.75,
             name="Scores",
         )
@@ -776,32 +791,33 @@ def _fig_score_hist(scores: np.ndarray, selected_idx: int, threshold: float) -> 
     fig.add_vline(
         x=threshold,
         line_dash="dash",
-        line_color="#e74c3c",
-        line_width=2,
+        line_color="#ef4444",
+        line_width=1.5,
         annotation_text="Limite",
         annotation_position="top right",
-        annotation_font_color="#e74c3c",
+        annotation_font_color="#9ba3af",
+        annotation_font_size=10,
     )
     fig.add_vline(
         x=scores[selected_idx],
-        line_color="gold",
-        line_width=2.5,
-        annotation_text=f"Snapshot #{selected_idx} (p{percentile:.0f})",
+        line_color="#fbbf24",
+        line_width=2,
+        annotation_text=f"#{selected_idx} (p{percentile:.0f})",
         annotation_position="top left",
-        annotation_font_color="gold",
+        annotation_font_color="#fbbf24",
+        annotation_font_size=10,
     )
     fig.update_layout(
-        title=f"Posição no ranking — percentil {percentile:.0f}%",
-        xaxis_title="Anomaly score",
+        xaxis_title="Score",
         yaxis_title="Contagem",
-        height=400,
-        margin=dict(l=40, r=20, t=55, b=40),
+        height=380,
+        margin=dict(l=40, r=20, t=20, b=40),
         showlegend=False,
         plot_bgcolor="#0e1117",
         paper_bgcolor="#0e1117",
-        font=dict(color="#fafafa"),
-        xaxis_gridcolor="#2a2a2a",
-        yaxis_gridcolor="#2a2a2a",
+        font=dict(color="#e5e7eb", size=11),
+        xaxis_gridcolor="#1f2430",
+        yaxis_gridcolor="#1f2430",
     )
     return fig
 
@@ -821,56 +837,56 @@ def _fig_score_distribution(
         fig.add_trace(
             go.Histogram(
                 x=scores_h,
-                name="Saudável (y=0)",
+                name="Saudável",
                 histnorm="probability density",
-                marker_color="rgba(46,204,113,0.55)",
+                marker_color="rgba(59,130,246,0.55)",
                 nbinsx=30,
-                opacity=0.80,
+                opacity=0.85,
             )
         )
     if len(scores_d) > 0:
         fig.add_trace(
             go.Histogram(
                 x=scores_d,
-                name="Degradado (y=1)",
+                name="Degradado",
                 histnorm="probability density",
-                marker_color="rgba(231,76,60,0.55)",
+                marker_color="rgba(239,68,68,0.55)",
                 nbinsx=30,
-                opacity=0.80,
+                opacity=0.85,
             )
         )
 
-    # Threshold as vertical line (float x — safe add_vline)
     fig.add_vline(
         x=threshold,
         line_dash="dash",
-        line_color="#e74c3c",
-        line_width=2,
-        annotation_text=f"  Limite {threshold:.4f}",
+        line_color="#ef4444",
+        line_width=1.5,
+        annotation_text=f"Limite {threshold:.4f}",
         annotation_position="top right",
-        annotation_font_color="#e74c3c",
-        annotation_font_size=11,
+        annotation_font_color="#9ba3af",
+        annotation_font_size=10,
     )
 
     fig.update_layout(
         barmode="overlay",
-        title=f"Bearing {bearing_id} — Separabilidade · {auc_str}",
-        xaxis_title="Anomaly score",
+        title=dict(text=auc_str, font=dict(size=11, color="#9ba3af"), x=0.0, xanchor="left"),
+        xaxis_title="Score",
         yaxis_title="Densidade",
-        height=310,
-        margin=dict(l=50, r=20, t=55, b=40),
+        height=300,
+        margin=dict(l=50, r=20, t=40, b=40),
         showlegend=True,
         plot_bgcolor="#0e1117",
         paper_bgcolor="#0e1117",
-        font=dict(color="#fafafa"),
-        xaxis_gridcolor="#2a2a2a",
-        yaxis_gridcolor="#2a2a2a",
+        font=dict(color="#e5e7eb", size=11),
+        xaxis_gridcolor="#1f2430",
+        yaxis_gridcolor="#1f2430",
         legend=dict(
             orientation="h",
             yanchor="bottom",
-            y=1.02,
+            y=1.0,
             xanchor="right",
             x=1,
+            bgcolor="rgba(0,0,0,0)",
         ),
     )
     return fig
@@ -892,24 +908,22 @@ def _fig_score_over_time_by_bearing(
         mask = (meta["_meta_bearing_id"] == bid).values
         ts = pd.to_datetime(meta.loc[mask, "_meta_timestamp"])
         s = scores[mask]
-        color = _BEARING_COLORS.get(int(bid), "#aaaaaa")
-        label = f"Bearing {bid} ⚠" if bid == 1 else f"Bearing {bid}"
+        color = _BEARING_COLORS.get(int(bid), "#9ca3af")
         fig.add_trace(
             go.Scatter(
                 x=ts,
                 y=s,
                 mode="lines+markers",
                 marker=dict(size=3, color=color),
-                line=dict(color=color, width=2 if bid == 1 else 1.5),
-                name=label,
+                line=dict(color=color, width=2 if bid == 1 else 1.3),
+                name=f"Bearing {bid}",
             )
         )
 
-    # Per-bearing threshold dotted lines (Scatter traces — no annotation bug risk)
     if thresholds_by_bearing:
         for bid in sorted(thresholds_by_bearing.keys()):
             thr_val = thresholds_by_bearing[bid]
-            color = _BEARING_COLORS.get(bid, "#aaaaaa")
+            color = _BEARING_COLORS.get(bid, "#9ca3af")
             mask = (meta["_meta_bearing_id"] == bid).values
             if mask.any():
                 ts_bear = pd.to_datetime(meta.loc[mask, "_meta_timestamp"])
@@ -920,36 +934,42 @@ def _fig_score_over_time_by_bearing(
                         x=[x0, x1],
                         y=[thr_val, thr_val],
                         mode="lines",
-                        line=dict(color=color, width=1.2, dash="dot"),
+                        line=dict(color=color, width=1, dash="dot"),
                         showlegend=False,
                         hovertemplate=f"Limite B{bid}: {thr_val:.4f}<extra></extra>",
-                        opacity=0.70,
+                        opacity=0.55,
                     )
                 )
     else:
-        # Fallback: single threshold line
         fig.add_hline(
             y=threshold,
             line_dash="dash",
-            line_color="#e74c3c",
-            line_width=1.5,
+            line_color="#ef4444",
+            line_width=1.2,
             annotation_text="Limite",
             annotation_position="top right",
-            annotation_font_color="#e74c3c",
+            annotation_font_color="#9ba3af",
+            annotation_font_size=10,
         )
 
     fig.update_layout(
-        title="Score de anomalia por rolamento — linhas pontilhadas = limite p99 calibrado",
         xaxis_title="Data",
-        yaxis_title="Score de anomalia",
-        height=380,
-        margin=dict(l=50, r=20, t=55, b=40),
+        yaxis_title="Score",
+        height=340,
+        margin=dict(l=50, r=20, t=30, b=40),
         plot_bgcolor="#0e1117",
         paper_bgcolor="#0e1117",
-        font=dict(color="#fafafa"),
-        xaxis_gridcolor="#1a1a1a",
-        yaxis_gridcolor="#222222",
-        legend=dict(orientation="h", yanchor="bottom", y=1.06, xanchor="right", x=1),
+        font=dict(color="#e5e7eb", size=11),
+        xaxis_gridcolor="#1f2430",
+        yaxis_gridcolor="#1f2430",
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="right",
+            x=1,
+            bgcolor="rgba(0,0,0,0)",
+        ),
     )
     return fig
 
@@ -965,6 +985,9 @@ def _hero(
     timestamps: pd.DatetimeIndex | None = None,
     state: str | None = None,
     recent_rate: float | None = None,
+    scores_full: np.ndarray | None = None,
+    y_full: np.ndarray | None = None,
+    timestamps_full: pd.DatetimeIndex | None = None,
 ) -> None:
     """Render the page-top status banner.
 
@@ -972,61 +995,93 @@ def _hero(
     bearing's *full* score history (not just the test slice). The test slice
     alone biases towards the end of the run and would push every bearing into
     "falha" — contradicting the IMS ground truth that only B1 fails.
+
+    When ``scores_full`` / ``y_full`` / ``timestamps_full`` are provided, the
+    first-detection timestamp and the recall/FP metrics are computed on the
+    full bearing history. Otherwise we fall back to the test slice.
     """
-    above = scores >= threshold
     bearing_label = f"Bearing {bearing_id}" if bearing_id else "Rolamento"
-    has_ts = timestamps is not None and len(timestamps) == len(scores)
+
+    use_full = (
+        scores_full is not None
+        and y_full is not None
+        and timestamps_full is not None
+        and len(scores_full) == len(timestamps_full) == len(y_full)
+    )
+    s_eval = scores_full if use_full else scores
+    y_eval = y_full if use_full else y_test
+    ts_eval = timestamps_full if use_full else timestamps
+
+    above_eval = s_eval >= threshold
+    has_ts = ts_eval is not None and len(ts_eval) == len(s_eval)
 
     if state is None:
-        # Fall back to a local classification if the caller didn't supply one.
         state, recent_rate, _ = _bearing_state(scores, threshold)
+
+    def _card(cls: str, label: str, title: str, meta: str = "") -> str:
+        meta_html = f'<div class="meta">{meta}</div>' if meta else ""
+        return (
+            f'<div class="status-card {cls}">'
+            f'<span class="label">{label}</span>'
+            f'<span class="title">{title}</span>'
+            f"{meta_html}</div>"
+        )
 
     if state == _STATE_STABLE:
         st.markdown(
-            f'<div class="status-ok">✅ &nbsp; {bearing_label} — '
-            f"Sem anomalias significativas (taxa recente {recent_rate:.1%})</div>",
+            _card(
+                "status-ok",
+                "Estável",
+                f"{bearing_label} sem anomalias significativas",
+                f"Taxa recente acima do limite: {recent_rate:.1%}",
+            ),
             unsafe_allow_html=True,
         )
     elif state == _STATE_FAILURE:
-        if above.any() and has_ts:
-            assert timestamps is not None
-            first_idx = int(np.argmax(above))
-            first_ts_str = timestamps[first_idx].strftime("%d/%m/%Y às %H:%M")
-            hours_early = (timestamps[-1] - timestamps[first_idx]).total_seconds() / 3600
-            tp = int((above & (y_test == 1)).sum())
-            n_pos = int(y_test.sum())
-            fp = int((above & (y_test == 0)).sum())
-            n_neg = len(y_test) - n_pos
+        first_idx = _first_sustained_detection(s_eval, threshold) if has_ts else None
+        if first_idx is not None and has_ts:
+            assert ts_eval is not None
+            first_ts_str = ts_eval[first_idx].strftime("%d/%m/%Y %H:%M")
+            hours_to_end = (ts_eval[-1] - ts_eval[first_idx]).total_seconds() / 3600
+            tp = int((above_eval & (y_eval == 1)).sum())
+            n_pos = int((y_eval == 1).sum())
+            fp = int((above_eval & (y_eval == 0)).sum())
+            n_neg = int((y_eval == 0).sum())
             recall = tp / n_pos if n_pos > 0 else None
             fp_rate = fp / n_neg if n_neg > 0 else None
             parts = [
-                f"1ª detecção: <b>{first_ts_str}</b>",
-                f"{hours_early:.0f}h de antecedência",
+                f"detecção sustentada desde {first_ts_str}",
+                f"{hours_to_end:.0f}h até o fim da gravação",
             ]
             if recall is not None:
-                parts.append(f"{recall:.0%} dos eventos capturados")
+                parts.append(f"recall {recall:.0%}")
             if fp_rate is not None:
-                parts.append(f"{fp_rate:.1%} de falsos alarmes")
-            detail = " &nbsp;·&nbsp; ".join(parts)
+                parts.append(f"FP {fp_rate:.1%}")
             st.markdown(
-                f'<div class="status-warn">🔴 &nbsp; {bearing_label} — '
-                f"Falha em progressão &nbsp;|&nbsp; {detail}</div>",
+                _card("status-warn", "Falha em progressão", bearing_label, " · ".join(parts)),
                 unsafe_allow_html=True,
             )
         else:
             st.markdown(
-                f'<div class="status-warn">🔴 &nbsp; {bearing_label} — Falha em progressão '
-                f"&nbsp;·&nbsp; {recent_rate:.0%} dos snapshots recentes acima do limite</div>",
+                _card(
+                    "status-warn",
+                    "Falha em progressão",
+                    bearing_label,
+                    f"{recent_rate:.0%} dos snapshots recentes acima do limite",
+                ),
                 unsafe_allow_html=True,
             )
-    else:  # recurrent
+    else:
         st.markdown(
-            f'<div class="status-recurrent">🟠 &nbsp; {bearing_label} — '
-            f"Anomalias recorrentes &nbsp;·&nbsp; {recent_rate:.0%} dos snapshots recentes acima do limite "
-            "&nbsp;·&nbsp; sem falha documentada pelo paper</div>",
+            _card(
+                "status-recurrent",
+                "Anomalias recorrentes",
+                bearing_label,
+                f"{recent_rate:.0%} dos snapshots recentes acima do limite · "
+                "sem falha documentada pelo paper",
+            ),
             unsafe_allow_html=True,
         )
-    st.markdown("<br>", unsafe_allow_html=True)
 
 
 def _kpi_row(
@@ -1038,49 +1093,68 @@ def _kpi_row(
     timestamps: pd.DatetimeIndex,
     state: str | None = None,
     recent_rate: float | None = None,
+    scores_full: np.ndarray | None = None,
+    y_full: np.ndarray | None = None,
 ) -> None:
-    n_total = len(scores)
-    n_pos = int(y_test.sum())
+    """Render KPI row + prediction card.
+
+    Recall / FP / F1 are computed on the full bearing history when
+    ``scores_full``/``y_full`` are provided — the test slice alone has no
+    healthy labels for Bearing 1 and is essentially vacuous there. Score máx
+    uses the test slice (this is what the dashboard zooms into).
+    """
+    use_full = scores_full is not None and y_full is not None and len(scores_full) == len(y_full)
+    s_eval = scores_full if use_full else scores
+    y_eval = y_full if use_full else y_test
+
+    n_total = len(s_eval)
+    n_pos = int((y_eval == 1).sum())
     n_neg = n_total - n_pos
-    above = scores >= threshold
-    flagged = int(above.sum())
-    tp = int((above & (y_test == 1)).sum())
-    fp = int((above & (y_test == 0)).sum())
+    above_eval = s_eval >= threshold
+    flagged = int(above_eval.sum())
+    tp = int((above_eval & (y_eval == 1)).sum())
+    fp = int((above_eval & (y_eval == 0)).sum())
     recall = tp / n_pos if n_pos > 0 else 0.0
     precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0
     f1 = 2 * precision * recall / (precision + recall) if (precision + recall) > 0 else 0.0
     fp_rate = fp / n_neg if n_neg > 0 else 0.0
     flagged_rate = flagged / n_total if n_total > 0 else 0.0
-    max_score = float(scores.max())
+    max_score = float(s_eval.max())
     excess_pct = (max_score - threshold) / max(threshold, 1e-9) * 100
 
-    # Resolve state up front so both the KPI cards and the prediction card
-    # render the same classification.
     if state is None:
         state, recent_rate, _ = _bearing_state(scores, threshold)
 
     kpi1, kpi2, kpi3, kpi4, pred_col = st.columns([1, 1, 1, 1, 2])
 
+    metrics_scope = "histórico completo" if use_full else "slice de teste"
     if n_pos > 0:
-        # Failure-class metrics are meaningful only when the bearing actually
-        # has labelled degradation in the slice (i.e. Bearing 1 in IMS Run 2).
         kpi1.metric(
             "Degradações detectadas",
             f"{tp} / {n_pos}",
-            f"{recall:.1%} dos snapshots anômalos",
-            help="Snapshots marcados como degradados no rótulo que o modelo alertou.",
+            f"{recall:.1%} dos rotulados",
+            help=(
+                f"Snapshots rotulados degradados (últimos 60% do período) que o "
+                f"modelo flaggou. Calculado no {metrics_scope}."
+            ),
         )
         kpi2.metric(
             "Falsos alarmes",
             fp,
-            f"{fp_rate:.1%} dos snapshots saudáveis",
+            f"{fp_rate:.1%} dos {n_neg} saudáveis",
             delta_color="inverse",
-            help="Snapshots saudáveis que o modelo incorretamente alertou.",
+            help=(
+                f"Snapshots saudáveis (primeiros 40%) que o modelo flaggou. "
+                f"Calculado no {metrics_scope}."
+            ),
         )
         kpi3.metric(
             "F1 Score",
             f"{f1:.1%}",
-            help="Média harmônica entre detecção e precisão. 100% = modelo perfeito.",
+            help=(
+                "Média harmônica entre recall e precisão sobre o rótulo "
+                "pseudo-supervisionado (40/60). 100% = modelo perfeito nesse rótulo."
+            ),
         )
     else:
         # No documented failure for this bearing — recall/precision/F1 are
@@ -1125,14 +1199,15 @@ def _kpi_row(
 
     with pred_col:
         if prediction is not None:
-            pred_ts_str = prediction["predicted_ts"].strftime("%d/%m/%Y às %H:%M")
+            pred_ts_str = prediction["predicted_ts"].strftime("%d/%m/%Y %H:%M")
             h = prediction["hours_away"]
             st.markdown(
-                '<div class="pred-card">'
-                f"<h2>🔮 Falha prevista em {h:.0f}h</h2>"
-                f"<p>Projeção: <b>{pred_ts_str}</b></p>"
-                f"<p>Baseado na tendência dos últimos {prediction['n_trend']} snapshots</p>"
-                f"<p style='font-size:0.8rem;color:#aaa;'>Coef. angular: {prediction['slope']:.6f}/snapshot</p>"
+                '<div class="info-card pred-card">'
+                '<div class="heading">Falha prevista</div>'
+                f'<div class="value">~{h:.0f}h</div>'
+                f'<div class="sub">{pred_ts_str}</div>'
+                f'<div class="sub">tendência dos últimos {prediction["n_trend"]} snapshots · '
+                f"slope {prediction['slope']:.4f}</div>"
                 "</div>",
                 unsafe_allow_html=True,
             )
@@ -1142,24 +1217,23 @@ def _kpi_row(
             if len(above_idx) > 0 and len(timestamps) == len(scores):
                 first_ts = timestamps[int(above_idx[0])]
                 hours_since = (timestamps[-1] - first_ts).total_seconds() / 3600
-                detected_line = f"<p>Detectado há <b>{hours_since:.0f}h</b></p>"
+                detected_line = f'<div class="sub">Detectado há {hours_since:.0f}h</div>'
             st.markdown(
-                '<div class="fail-card">'
-                "<h2>🔴 Falha em progressão</h2>"
-                + detected_line
-                + f"<p>{recent_rate:.0%} dos snapshots recentes acima do limite</p>"
-                f"<p>Score máx. <b>{max_score:.4f}</b> — {excess_pct:+.0f}% vs. limite</p>"
-                f"<p style='font-size:0.8rem;color:#aaa;'>Limite: {threshold:.4f}</p>"
+                '<div class="info-card fail-card">'
+                '<div class="heading">Falha em progressão</div>'
+                f"{detected_line}"
+                f'<div class="sub">{recent_rate:.0%} dos snapshots recentes acima do limite</div>'
+                f'<div class="sub">Score máx. {max_score:.4f} ({excess_pct:+.0f}% vs. limite)</div>'
                 "</div>",
                 unsafe_allow_html=True,
             )
         elif state == _STATE_RECURRENT:
             st.markdown(
-                '<div class="recur-card">'
-                "<h2>🟠 Anomalias recorrentes</h2>"
-                f"<p>{recent_rate:.0%} dos snapshots recentes acima do limite</p>"
-                f"<p>Score máx. <b>{max_score:.4f}</b> — {excess_pct:+.0f}% vs. limite</p>"
-                "<p style='font-size:0.8rem;color:#aaa;'>Sem falha documentada pelo paper neste rolamento</p>"
+                '<div class="info-card recur-card">'
+                '<div class="heading">Anomalias recorrentes</div>'
+                f'<div class="sub">{recent_rate:.0%} dos snapshots recentes acima do limite</div>'
+                f'<div class="sub">Score máx. {max_score:.4f} ({excess_pct:+.0f}% vs. limite)</div>'
+                '<div class="sub">Sem falha documentada pelo paper neste rolamento</div>'
                 "</div>",
                 unsafe_allow_html=True,
             )
@@ -1170,11 +1244,11 @@ def _kpi_row(
                 else f"#{selected_idx}"
             )
             st.markdown(
-                '<div class="ok-card">'
-                "<h2>📈 Tendência estável</h2>"
-                f"<p>{recent_rate:.0%} dos snapshots recentes acima do limite</p>"
-                f"<p>Snapshot: {sel_ts}</p>"
-                f"<p>Score: {scores[selected_idx]:.4f}</p>"
+                '<div class="info-card ok-card">'
+                '<div class="heading">Tendência estável</div>'
+                f'<div class="sub">{recent_rate:.0%} dos snapshots recentes acima do limite</div>'
+                f'<div class="sub">Snapshot atual: {sel_ts}</div>'
+                f'<div class="sub">Score: {scores[selected_idx]:.4f}</div>'
                 "</div>",
                 unsafe_allow_html=True,
             )
@@ -1331,25 +1405,20 @@ def _detail_panel(
 
     col_l, col_r = st.columns(2)
     with col_l:
+        st.markdown("**Desvio por feature**")
         if X_healthy is not None and len(X_healthy) > 0:
             st.plotly_chart(
                 _fig_feature_bar(X_test[sel], X_healthy, feature_names, sel),
                 use_container_width=True,
             )
-            st.caption(
-                "Barras vermelhas (≥ 3σ) indicam features críticas. "
-                "Ordenado por magnitude de desvio. "
-                "Hover mostra valor exato; barras capadas em ±15σ para legibilidade."
-            )
+            st.caption("Vermelho ≥ 3σ · amber ≥ 1.5σ · capado em ±15σ.")
         else:
-            st.info("Baseline saudável não disponível para cálculo de z-score.")
+            st.info("Baseline saudável não disponível.")
 
     with col_r:
+        st.markdown("**Posição na distribuição**")
         st.plotly_chart(_fig_score_hist(scores, sel, threshold), use_container_width=True)
-        st.caption(
-            "A linha dourada mostra onde este snapshot está na distribuição completa. "
-            "Snapshots à direita da linha vermelha são flagged como anômalos."
-        )
+        st.caption("Linha amber marca o snapshot atual; vermelho = limite.")
 
 
 def _shap_expander(
@@ -1360,7 +1429,7 @@ def _shap_expander(
     sel: int,
     X_healthy: np.ndarray | None = None,
 ) -> None:
-    with st.expander("🔍 Explicabilidade SHAP — por que este snapshot foi flagged?"):
+    with st.expander("Explicabilidade SHAP — por que este snapshot?"):
         if model_name in _SLOW_MODELS:
             st.info(
                 f"**{model_name}** usa KernelExplainer (model-agnostic). "
@@ -1403,17 +1472,12 @@ def _shap_expander(
 # Main
 # ---------------------------------------------------------------------------
 def main() -> None:
-    st.title("🔧 Detecção Preditiva de Falhas em Rolamentos Industriais")
-    st.markdown(
-        "Modelo de anomalia **não supervisionado** — treinado exclusivamente em dados saudáveis, "
-        "sem nunca ver um exemplo de falha — capaz de detectar degradação de rolamentos industriais "
-        "horas antes do colapso, com limiar calibrado por rolamento (≤ 1% de falsos alarmes)."
-    )
+    st.title("Detecção preditiva de falhas em rolamentos")
     st.caption(
-        "Dataset: IMS/NASA Run 2 (University of Cincinnati) · "
-        "7 dias · 4 rolamentos · 984 snapshots · 20 kHz · Bearing 1: falha documentada na pista externa · "
-        "[github.com/RenanMiqueloti/industrial-anomaly-detection]"
-        "(https://github.com/RenanMiqueloti/industrial-anomaly-detection)"
+        "Modelo não supervisionado treinado só em dados saudáveis. "
+        "Dataset IMS/NASA Run 2 · 12–19 fev 2004 · 984 snapshots (1 s @ 20 kHz, a cada 10 min) "
+        "× 4 rolamentos · "
+        "[código](https://github.com/RenanMiqueloti/industrial-anomaly-detection)"
     )
 
     # --- Load artifacts ---
@@ -1485,22 +1549,15 @@ def main() -> None:
             value=_thr_default,
             format="%.4f",
             help="Snapshots com score acima deste valor são flagged. "
-            "O padrão é o 99º percentil dos snapshots saudáveis (≤1% de falsos alarmes).",
+            "O padrão é o 99º percentil dos snapshots saudáveis de calibração "
+            "(primeiros 40% do período — limita FP a ≤1% nesse subconjunto).",
         )
         st.caption(f"Padrão calibrado: **{_thr_default:.4f}** (p99 dos saudáveis)")
 
         st.divider()
-        st.markdown("**Sobre o IMS Run 2:**")
-        st.markdown(
-            "- 7 dias de monitoramento contínuo (fev/2004)\n"
-            "- 4 rolamentos simultâneos, 20 kHz\n"
-            "- **Bearing 1**: falha na pista externa documentada\n"
-            "- Snapshots a cada ~10 min → linha do tempo real\n"
-        )
-        st.divider()
         st.caption(
-            "**Como usar:** ajuste o limite → observe onde as anomalias aparecem → "
-            "clique em um ponto para inspecionar o snapshot."
+            "Ajuste o limite, observe onde as anomalias aparecem, clique num ponto "
+            "da timeline para inspecionar."
         )
 
     # Reset selected snapshot when the user switches bearing
@@ -1513,18 +1570,34 @@ def main() -> None:
     # biases every bearing toward "falha". Full-history scoring gives the
     # honest current state.
     full_data = compute_full_dataset_scores(model_name)
+    full_meta = load_full_metadata()
     bearing_state_val: str | None = None
     recent_rate_val: float | None = None
+    scores_full_bear_sorted: np.ndarray | None = None
+    y_full_bear_sorted: np.ndarray | None = None
+    ts_full_bear_sorted: pd.DatetimeIndex | None = None
+
     if full_data is not None and selected_bearing is not None:
-        full_scores_all, _full_y_all, full_bids_all = full_data
+        full_scores_all, full_y_all, full_bids_all = full_data
         bear_full_mask_state = full_bids_all == selected_bearing
         scores_full_for_state = full_scores_all[bear_full_mask_state]
-        bearing_state_val, recent_rate_val, _ = _bearing_state(scores_full_for_state, threshold)
+        if full_meta is not None and "_meta_timestamp" in full_meta.columns:
+            ts_bear_unsorted = pd.to_datetime(
+                full_meta.loc[bear_full_mask_state, "_meta_timestamp"].values
+            )
+            order = np.argsort(ts_bear_unsorted.values)
+            scores_full_bear_sorted = scores_full_for_state[order]
+            y_full_bear_sorted = full_y_all[bear_full_mask_state][order]
+            ts_full_bear_sorted = pd.DatetimeIndex(ts_bear_unsorted.values[order])
+        else:
+            scores_full_bear_sorted = scores_full_for_state
+            y_full_bear_sorted = full_y_all[bear_full_mask_state]
+        bearing_state_val, recent_rate_val, _ = _bearing_state(scores_full_bear_sorted, threshold)
 
     # --- Prediction ---
     # Only run the linear-extrapolation failure projection when the bearing is
     # actually in failure state. Otherwise a noisy upward trend on a healthy
-    # bearing can produce a "🔮 Falha prevista em Xh" card — exactly the kind
+    # bearing can produce a "Falha prevista em Xh" card — exactly the kind
     # of overclaim the three-tier state classifier exists to prevent.
     if bearing_state_val == _STATE_FAILURE:
         prediction = _predict_failure(scores, timestamps, threshold)
@@ -1540,6 +1613,9 @@ def main() -> None:
         timestamps=timestamps,
         state=bearing_state_val,
         recent_rate=recent_rate_val,
+        scores_full=scores_full_bear_sorted,
+        y_full=y_full_bear_sorted,
+        timestamps_full=ts_full_bear_sorted,
     )
 
     # --- Init selected snapshot ---
@@ -1558,20 +1634,22 @@ def main() -> None:
         timestamps,
         state=bearing_state_val,
         recent_rate=recent_rate_val,
+        scores_full=scores_full_bear_sorted,
+        y_full=y_full_bear_sorted,
     )
 
     st.divider()
 
-    # --- Auto-diagnosis + Separability chart (reuses full_data computed above) ---
-    if full_data is not None and X_healthy is not None and selected_bearing is not None:
-        full_scores, full_y, full_bids = full_data
-        bear_full_mask = full_bids == selected_bearing
-        scores_full_bear = full_scores[bear_full_mask]
-        y_full_bear = full_y[bear_full_mask]
-
-        scores_h_dist = scores_full_bear[y_full_bear == 0]
-        scores_d_dist = scores_full_bear[y_full_bear == 1]
-        auc = _safe_auc(y_full_bear, scores_full_bear)
+    # --- Auto-diagnosis + Separability chart (reuses full history computed above) ---
+    if (
+        scores_full_bear_sorted is not None
+        and y_full_bear_sorted is not None
+        and X_healthy is not None
+        and selected_bearing is not None
+    ):
+        scores_h_dist = scores_full_bear_sorted[y_full_bear_sorted == 0]
+        scores_d_dist = scores_full_bear_sorted[y_full_bear_sorted == 1]
+        auc = _safe_auc(y_full_bear_sorted, scores_full_bear_sorted)
 
         diag_col, sep_col = st.columns([2, 3])
 
@@ -1599,7 +1677,7 @@ def main() -> None:
                 )
 
         with sep_col:
-            st.subheader("📉 Separabilidade de Scores")
+            st.subheader("Separabilidade")
             st.plotly_chart(
                 _fig_score_distribution(
                     scores_h_dist,
@@ -1611,8 +1689,8 @@ def main() -> None:
                 use_container_width=True,
             )
             st.caption(
-                "Distribuição dos scores para o dataset completo (984 snapshots). "
-                "Quanto menos as curvas se sobrepõem, melhor o modelo separa saudável de degradado."
+                "Distribuição dos scores no dataset completo. "
+                "Menos sobreposição = melhor separação."
             )
 
         st.divider()
@@ -1626,26 +1704,17 @@ def main() -> None:
         thresholds_by_bearing=thresholds_by_bearing if thresholds_by_bearing else None,
     )
     if multi_fig is not None:
-        st.subheader("📊 Visão Geral — 4 Rolamentos em Paralelo")
+        st.subheader("Visão geral · 4 rolamentos")
         st.caption(
-            "Score de anomalia por rolamento ao longo dos 7 dias. "
-            "Linhas pontilhadas coloridas = limiar p99 calibrado por rolamento (≤ 1% de falsos alarmes por design). "
-            "Bearing 1 é o único com falha documentada pelo paper IMS Run 2 (pista externa)."
+            "Linhas pontilhadas = limiar p99 por rolamento. "
+            "Apenas Bearing 1 tem falha documentada pelo paper (pista externa)."
         )
         st.plotly_chart(multi_fig, use_container_width=True)
         st.divider()
 
-    # --- Timeline ---
     _bearing_label = f"Bearing {selected_bearing}" if selected_bearing else "Rolamento"
-    st.subheader(f"📈 {_bearing_label} — Timeline Detalhada · Passado + Projeção Futura")
-    st.caption(
-        "Cada ponto = 1 snapshot (~1 s de vibrações a 20 kHz). "
-        "**Verde** = normal. **Vermelho ◆** = anomalia detectada. "
-        "**Linha azul** = 1ª detecção. "
-        "**Laranja sólido** = tendência (últimos 25%). "
-        "**Laranja tracejado** = projeção futura. "
-        "**Clique em qualquer ponto** para inspecionar o snapshot."
-    )
+    st.subheader(f"Timeline · {_bearing_label}")
+    st.caption("Cada ponto = 1 snapshot (1 s a 20 kHz). Clique para inspecionar.")
 
     timeline_fig = _fig_timeline(
         scores,
@@ -1697,7 +1766,7 @@ def main() -> None:
 
     # --- Context / methodology ---
     st.divider()
-    with st.expander("📖 Pipeline e Metodologia"):
+    with st.expander("Pipeline e metodologia"):
         st.markdown(
             """
 **Extração de features (por snapshot):**
@@ -1711,18 +1780,22 @@ Cada snapshot = 1 segundo de vibração a 20 kHz (20 480 amostras). São extraí
 
 **Bandas de frequência — o que cada uma captura:**
 
+Frequências de defeito do rolamento Rexnord ZA-2115 a 2000 RPM (Qiu et al. 2006,
+Kalikatzarakis 2018): BPFO ≈ 236 Hz, BPFI ≈ 297 Hz, BSF ≈ 140 Hz (2×BSF ≈ 280 Hz),
+FTF ≈ 15 Hz. Todas as fundamentais caem na banda 0–500 Hz.
+
 | Banda | O que indica |
 |-------|-------------|
-| 0–500 Hz | Desbalanceamento, ressonâncias estruturais |
-| 500–2k Hz | Harmônicos fundamentais de defeito de rolamento |
-| 2–5 kHz | Frequência característica de defeito de pista (BPFO/BPFI) |
-| 5–10 kHz | Dano avançado, impactos de esfera |
+| 0–500 Hz | Fundamentais — BPFO/BPFI/BSF, frequência de rotação, desbalanceamento |
+| 500–2k Hz | Harmônicos das frequências de defeito (2× a 5× BPFO/BPFI) |
+| 2–5 kHz | Modos ressonantes estruturais (housing/eixo) excitados por impactos |
+| 5–10 kHz | Alta frequência — impactos severos, ressonâncias excitadas por dano avançado |
 
 **Pipeline de detecção:**
 
 1. **Treino sem rótulos** — modelo ajustado exclusivamente nos primeiros 40% dos snapshots (período saudável)
 2. **Scoring** — cada snapshot recebe um score de anomalia proporcional ao desvio do comportamento de treino
-3. **Limiar por rolamento** — p99 dos snapshots saudáveis de cada bearing → ≤ 1% de falsos alarmes garantido por design
+3. **Limiar por rolamento** — p99 dos snapshots de **calibração** (primeiros 40% saudáveis) de cada bearing. Limita FP a ≤ 1% **nesse subconjunto** — a taxa medida no histórico completo pode ser maior em B2/B3/B4 por drift natural dos sinais ao longo da semana
 4. **Projeção** — regressão linear nos últimos 25% dos scores projeta o cruzamento do limiar no tempo
 
 **Decisões de design:**
